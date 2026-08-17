@@ -1,0 +1,28 @@
+name: Commit final ScriptC source fix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/native-octave-client
+      - name: Apply source patch
+        run: git apply --check .github/final-scriptc.patch && git apply .github/final-scriptc.patch
+      - name: Verify patch is in working tree
+        run: |
+          sed -n '114,124p' src/core.ts
+          sed -n '332,340p' src/core.ts
+      - name: Commit source patch
+        run: |
+          git config user.name "spotify-ci"
+          git config user.email "spotify-ci@users.noreply.github.com"
+          git add src/core.ts
+          git commit -m "fix: finalize ScriptC numeric proofs"
+          git push origin HEAD:feat/native-octave-client
