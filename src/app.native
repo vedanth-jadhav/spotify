@@ -70,7 +70,7 @@
             <text width="180" size="sm" foreground="text_muted" wrap="false">{t.album}</text>
             <if test="{t.liked}"><button size="icon" variant="ghost" icon="check-circle" on-press="toggle_like:{t.id}" label="Remove from Liked Songs"></button></if><else><button size="icon" variant="ghost" icon="plus" on-press="toggle_like:{t.id}" label="Save to Liked Songs"></button></else>
             <text width="42" size="sm" foreground="text_muted">{t.duration}</text>
-            <context-menu><menu-item icon="plus" on-press="queue_track:{t.id}">Add to queue</menu-item><menu-item icon="save" on-press="toggle_like:{t.id}">Save to Liked Songs</menu-item></context-menu>
+            <context-menu><menu-item on-press="queue_track:{t.id}">Add to queue</menu-item><menu-item on-press="toggle_like:{t.id}">Save to Liked Songs</menu-item></context-menu>
           </list-item></for>
         </list></if>
       </column></scroll></if>
