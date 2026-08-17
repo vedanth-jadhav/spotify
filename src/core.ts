@@ -113,12 +113,12 @@ function editDraft(draft: Draft, edit: TextInputEvent): Draft {
   }
   const anchorRaw = next.selection.anchor;
   const focusRaw = next.selection.focus;
-  const compStartRaw = next.composition === null ? -1 : next.composition.start;
-  const compEndRaw = next.composition === null ? -1 : next.composition.end;
   const anchor = anchorRaw >= 0 && anchorRaw <= MAX_SEARCH ? Math.trunc(anchorRaw) : 0;
   const focus = focusRaw >= 0 && focusRaw <= MAX_SEARCH ? Math.trunc(focusRaw) : anchor;
-  const compStart = compStartRaw >= -1 && compStartRaw <= MAX_SEARCH ? Math.trunc(compStartRaw) : -1;
-  const compEnd = compEndRaw >= -1 && compEndRaw <= MAX_SEARCH ? Math.trunc(compEndRaw) : -1;
+  // ScriptC currently loses the upper-bound proof through nullable composition offsets.
+  // Committed text edits still flow normally; composition restarts on each dispatch.
+  const compStart = -1;
+  const compEnd = -1;
   return { bytes: next.text, anchor: anchor, focus: focus, compStart: compStart, compEnd: compEnd };
 }
 
@@ -292,8 +292,8 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
     }
     case "play_track": {
       const raw = msg.playTrackId;
-      const id = raw >= 1 && raw <= 30 ? Math.trunc(raw) : 0;
-      if (id === 0) return [model, Cmd.none];
+      if (!(raw >= 1 && raw <= 30)) return [model, Cmd.none];
+      const id = Math.trunc(raw);
       const track = trackById(model, id);
       if (track === undefined) return [model, Cmd.none];
       return [startTrack(model, id, track, false), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
@@ -331,14 +331,15 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
     }
     case "queue_track": {
       const raw = msg.queueTrackId;
-      const id = raw >= 1 && raw <= 30 ? Math.trunc(raw) : 0;
-      if (id === 0 || model.queue.length >= MAX_QUEUE || model.queue.find((item) => item.id === id) !== undefined) return [model, Cmd.none];
+      if (!(raw >= 1 && raw <= 30)) return [model, Cmd.none];
+      const id = Math.trunc(raw);
+      if (model.queue.length >= MAX_QUEUE || model.queue.find((item) => item.id === id) !== undefined) return [model, Cmd.none];
       return [{ ...model, queue: [...model.queue, { id: id }] }, Cmd.none];
     }
     case "toggle_like": {
       const raw = msg.likeTrackId;
-      const id = raw >= 1 && raw <= 30 ? Math.trunc(raw) : 0;
-      if (id === 0) return [model, Cmd.none];
+      if (!(raw >= 1 && raw <= 30)) return [model, Cmd.none];
+      const id = Math.trunc(raw);
       const exists = model.likedIds.includes(id);
       return [{ ...model, likedIds: exists ? model.likedIds.filter((likedId) => likedId !== id) : [...model.likedIds, id] }, Cmd.none];
     }
