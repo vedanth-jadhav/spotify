@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect-scriptc:
+  inspect-native:
     runs-on: macos-15
     timeout-minutes: 8
     steps:
@@ -16,11 +16,8 @@ jobs:
         with:
           node-version: 22.16.0
       - run: npm ci
-      - name: Inspect ScriptC compiler package
+      - name: Locate Native SDK generated shim source
         shell: bash
         run: |
           set -euo pipefail
-          echo '--- files ---'
-          find node_modules/@scriptc node_modules/scriptc -type f -maxdepth 5 -print | sort
-          echo '--- quota refs ---'
-          grep -R -n -E 'EvalBranchQuota|eval.*branch|tag_name|field\.name|msg_tags|union disagree|core_shim' node_modules/@scriptc node_modules/scriptc | head -200 || true
+          grep -R -n -E 'msg_tags|core_shim|tag_name|EvalBranchQuota|std\.mem\.eql\(u8, field\.name' node_modules/@native-sdk | head -240 || true
