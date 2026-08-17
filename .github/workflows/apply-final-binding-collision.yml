@@ -1,0 +1,48 @@
+name: Apply final binding collision fix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test-and-fix:
+    runs-on: macos-15
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.16.0
+      - name: Add explicit integer boundary proofs
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          core = Path('src/core.ts')
+          s = core.read_text()
+          old = '''      const next = model.positionMs + CLOCK_MS;\n      return [{ ...model, positionMs: model.durationMs > 0 && next > model.durationMs ? model.durationMs : next }, Cmd.none];'''
+          new = '''      const rawNext = model.positionMs + CLOCK_MS;\n      const next = rawNext >= 0 && rawNext <= 9007199254740991 ? Math.trunc(rawNext) : model.positionMs;\n      return [{ ...model, positionMs: model.durationMs > 0 && next > model.durationMs ? model.durationMs : next }, Cmd.none];'''
+          if old not in s:
+              raise SystemExit('clock boundary shape not found')
+          core.write_text(s.replace(old, new, 1))
+
+          provider = Path('src/provider.ts')
+          s = provider.read_text()
+          old = '    const duration = parseUnsignedAt(body, durationAt + durationKey.length);'
+          new = '''    const parsedDuration = parseUnsignedAt(body, durationAt + durationKey.length);\n    const duration = parsedDuration >= 0 && parsedDuration <= 9007199254740991 ? Math.trunc(parsedDuration) : 0;'''
+          if s.count(old) != 2:
+              raise SystemExit(f'expected 2 duration boundaries, found {s.count(old)}')
+          provider.write_text(s.replace(old, new))
+          PY
+      - name: Commit compatibility fixes
+        run: |
+          set -euo pipefail
+          git config user.name spotify-ci
+          git config user.email spotify-ci@users.noreply.github.com
+          git add src/core.ts src/provider.ts
+          git commit -m "fix: prove Native integer boundaries explicitly"
+          git push
+      - run: npm ci
+      - name: Native compiled-core test
+        run: npx --no-install native test --yes
