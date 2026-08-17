@@ -14,19 +14,19 @@
     <button size="sm" variant="ghost" label="Profile">V</button>
   </row>
 
-  <row grow="1" gap="8" padding-left="8" padding-right="8" min-height="0">
+  <row grow="1" gap="8" padding="8" min-height="0">
     <panel width="302" background="surface" radius="lg" label="Your Library">
       <column grow="1" min-height="0">
         <row height="58" padding="14" gap="10" cross="center">
           <button grow="1" variant="ghost" on-press="go_library">Your Library</button>
           <button size="sm" variant="ghost" label="Create">+</button>
         </row>
-        <row padding-left="12" padding-right="12" padding-bottom="8" gap="8">
+        <row padding="12" gap="8">
           <badge variant="secondary">Playlists</badge>
           <badge variant="secondary">Artists</badge>
           <badge variant="secondary">Albums</badge>
         </row>
-        <row padding-left="12" padding-right="12" padding-bottom="8" cross="center">
+        <row padding="12" cross="center">
           <text size="sm" foreground="text_muted">Search</text><spacer grow="1" /><text size="sm" foreground="text_muted">Recents v</text>
         </row>
         <scroll grow="1" label="Library items">
