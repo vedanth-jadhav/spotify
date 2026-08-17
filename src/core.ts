@@ -834,7 +834,8 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
     }
     case "clock_tick": {
       if (!model.playing || model.buffering || model.loadPending) return [model, Cmd.none];
-      const next = model.positionMs + CLOCK_MS;
+      const rawNext = model.positionMs + CLOCK_MS;
+      const next = rawNext >= 0 && rawNext <= 9007199254740991 ? Math.trunc(rawNext) : model.positionMs;
       return [{ ...model, positionMs: model.durationMs > 0 && next > model.durationMs ? model.durationMs : next }, Cmd.none];
     }
   }

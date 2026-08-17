@@ -228,7 +228,8 @@ export function parseOctaveSearch(body: Bytes): readonly Track[] {
     const album = jsonStringAfter(body, titleKey, albumAt);
     const cover = jsonStringAfter(body, coverKey, albumAt);
     const preview = jsonStringAfter(body, previewKey, previewAt);
-    const duration = parseUnsignedAt(body, durationAt + durationKey.length);
+    const parsedDuration = parseUnsignedAt(body, durationAt + durationKey.length);
+    const duration = parsedDuration >= 0 && parsedDuration <= 9007199254740991 ? Math.trunc(parsedDuration) : 0;
     if (remoteId.length > 0 && title.length > 0) {
       out.push({ remoteId: remoteId, title: title, artist: artist, album: album, durationSec: duration, coverUrl: cover, fallbackPreviewUrl: preview });
     }
@@ -261,7 +262,8 @@ export function parseDeezerSearch(body: Bytes): readonly Track[] {
     const album = jsonStringAfter(body, titleKey, albumAt);
     const cover = jsonStringAfter(body, coverKey, albumAt);
     const preview = jsonStringAfter(body, previewKey, previewAt);
-    const duration = parseUnsignedAt(body, durationAt + durationKey.length);
+    const parsedDuration = parseUnsignedAt(body, durationAt + durationKey.length);
+    const duration = parsedDuration >= 0 && parsedDuration <= 9007199254740991 ? Math.trunc(parsedDuration) : 0;
     if (remoteId.length > 0 && title.length > 0) {
       out.push({ remoteId: remoteId, title: title, artist: artist, album: album, durationSec: duration, coverUrl: cover, fallbackPreviewUrl: preview });
     }
