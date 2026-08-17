@@ -1,4 +1,4 @@
-name: Apply parity fix
+name: Apply full Spotify parity pass
 
 on:
   push:
@@ -9,29 +9,30 @@ permissions:
   contents: write
 
 jobs:
-  patch:
+  apply:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: feat/native-octave-client
-      - name: Fix native context menu attributes
+          fetch-depth: 2
+      - name: Apply completed product pass
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('src/app.native')
-          s = p.read_text()
-          s = s.replace('<menu-item icon="plus" on-press=', '<menu-item on-press=')
-          s = s.replace('<menu-item icon="save" on-press=', '<menu-item on-press=')
-          p.write_text(s)
-          PY
-      - name: Commit parity fix
+          cat .github/parity.part.* | base64 --decode | gunzip > /tmp/full-parity.patch
+          git apply --index /tmp/full-parity.patch
+          git rm -f .github/parity.part.*
+          git rm -f .github/workflows/apply-cover-art.yml || true
+          git rm -f .github/workflows/apply-markup-fix.yml || true
+          git rm -f .github/workflows/apply-native-arity-fix.yml || true
+          git rm -f .github/workflows/final-core-fix.yml || true
+          git rm -f .github/final-scriptc.patch || true
+          git rm -f .github/native-integer.patch || true
+      - name: Commit completed app
         shell: bash
         run: |
           git config user.name "spotify-ci"
           git config user.email "spotify-ci@users.noreply.github.com"
-          git add src/app.native
-          git diff --cached --quiet && exit 0
-          git commit -m "fix: use supported native context menu schema"
+          git add -A
+          git commit -m "feat: complete Spotify parity product pass"
           git push origin HEAD:feat/native-octave-client
