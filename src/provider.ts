@@ -1,0 +1,221 @@
+import { asciiBytes } from "@native-sdk/core";
+
+export type Bytes = Uint8Array;
+
+export interface Track {
+  readonly id: number;
+  readonly title: Bytes;
+  readonly artist: Bytes;
+  readonly album: Bytes;
+  readonly durationSec: number;
+  readonly coverUrl: Bytes;
+  readonly streamUrl: Bytes;
+  readonly fallbackPreviewUrl: Bytes;
+}
+
+export const OCTAVE_ORIGIN = asciiBytes("https://music.octavestreaming.com");
+export const OCTAVE_API = asciiBytes("https://music.octavestreaming.com/api");
+export const DEEZER_API = asciiBytes("https://api.deezer.com");
+
+const HEX = asciiBytes("0123456789ABCDEF");
+
+export function concatBytes(a: Bytes, b: Bytes): Bytes {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0);
+  out.set(b, a.length);
+  return out;
+}
+
+export function concat3(a: Bytes, b: Bytes, c: Bytes): Bytes {
+  return concatBytes(concatBytes(a, b), c);
+}
+
+function safeQueryByte(ch: number): boolean {
+  return (ch >= 0x41 && ch <= 0x5a) || (ch >= 0x61 && ch <= 0x7a) || (ch >= 0x30 && ch <= 0x39) || ch === 0x2d || ch === 0x2e || ch === 0x5f || ch === 0x7e;
+}
+
+export function percentEncode(input: Bytes): Bytes {
+  let size = 0;
+  for (const ch of input) size += safeQueryByte(ch) ? 1 : 3;
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const ch of input) {
+    if (safeQueryByte(ch)) {
+      out[at] = ch;
+      at += 1;
+    } else {
+      out[at] = 0x25;
+      out[at + 1] = HEX[(ch >> 4) & 15];
+      out[at + 2] = HEX[ch & 15];
+      at += 3;
+    }
+  }
+  return out;
+}
+
+function decimalBytes(value: number): Bytes {
+  if (!(value >= 0) || value > 9007199254740991) return asciiBytes("0");
+  let n = Math.trunc(value);
+  if (n === 0) return asciiBytes("0");
+  const reversed = new Uint8Array(16);
+  let count = 0;
+  while (n > 0 && count < reversed.length) {
+    reversed[count] = 0x30 + (n % 10);
+    n = Math.trunc(n / 10);
+    count += 1;
+  }
+  const out = new Uint8Array(count);
+  for (let i = 0; i < count; i += 1) out[i] = reversed[count - i - 1];
+  return out;
+}
+
+/**
+ * Octave does not currently publish a stable public API contract. All guessed
+ * proxy paths are kept here, in one module, so a server-side route change never
+ * leaks into UI/state code. Search has a Deezer-compatible fallback because
+ * Octave's public catalog is Deezer-backed today.
+ */
+export function octaveSearchUrl(query: Bytes): Bytes {
+  return concat3(OCTAVE_API, asciiBytes("/search?q="), percentEncode(query));
+}
+
+export function deezerSearchFallbackUrl(query: Bytes): Bytes {
+  return concat3(DEEZER_API, asciiBytes("/search?limit=30&q="), percentEncode(query));
+}
+
+export function octaveHomeUrl(): Bytes {
+  return concatBytes(OCTAVE_API, asciiBytes("/home"));
+}
+
+export function octaveTrackUrl(id: number): Bytes {
+  return concat3(OCTAVE_API, asciiBytes("/track/"), decimalBytes(id));
+}
+
+export function octaveStreamUrl(id: number): Bytes {
+  return concat3(OCTAVE_API, asciiBytes("/stream/"), decimalBytes(id));
+}
+
+export function octaveLyricsUrl(id: number): Bytes {
+  return concat3(OCTAVE_API, asciiBytes("/lyrics/"), decimalBytes(id));
+}
+
+function bytesEqualAt(haystack: Bytes, at: number, needle: Bytes): boolean {
+  if (at < 0 || at + needle.length > haystack.length) return false;
+  for (let i = 0; i < needle.length; i += 1) if (haystack[at + i] !== needle[i]) return false;
+  return true;
+}
+
+function findFrom(haystack: Bytes, needle: Bytes, from: number): number {
+  if (needle.length === 0) return from;
+  for (let i = Math.max(0, from); i + needle.length <= haystack.length; i += 1) if (bytesEqualAt(haystack, i, needle)) return i;
+  return -1;
+}
+
+function parseUnsignedAt(bytes: Bytes, at: number): number {
+  let value = 0;
+  let i = at;
+  while (i < bytes.length && (bytes[i] === 0x20 || bytes[i] === 0x3a)) i += 1;
+  let seen = false;
+  while (i < bytes.length && bytes[i] >= 0x30 && bytes[i] <= 0x39) {
+    seen = true;
+    value = value * 10 + (bytes[i] - 0x30);
+    if (value > 9007199254740991) return 0;
+    i += 1;
+  }
+  return seen ? Math.trunc(value) : 0;
+}
+
+function jsonStringAfter(bytes: Bytes, key: Bytes, from: number): Bytes {
+  const keyAt = findFrom(bytes, key, from);
+  if (keyAt < 0) return new Uint8Array(0);
+  let i = keyAt + key.length;
+  while (i < bytes.length && bytes[i] !== 0x22) i += 1;
+  if (i >= bytes.length) return new Uint8Array(0);
+  i += 1;
+  const out = new Uint8Array(4096);
+  let size = 0;
+  while (i < bytes.length && size < out.length) {
+    const ch = bytes[i];
+    if (ch === 0x22) return out.slice(0, size);
+    if (ch === 0x5c && i + 1 < bytes.length) {
+      const escaped = bytes[i + 1];
+      if (escaped === 0x22 || escaped === 0x5c || escaped === 0x2f) out[size] = escaped;
+      else if (escaped === 0x6e) out[size] = 0x0a;
+      else if (escaped === 0x72) out[size] = 0x0d;
+      else if (escaped === 0x74) out[size] = 0x09;
+      else out[size] = 0x3f;
+      size += 1;
+      i += 2;
+    } else {
+      out[size] = ch;
+      size += 1;
+      i += 1;
+    }
+  }
+  return new Uint8Array(0);
+}
+
+function idBefore(bytes: Bytes, before: number): number {
+  const key = asciiBytes("\"id\":");
+  const start = Math.max(0, before - 180);
+  let found = -1;
+  let cursor = start;
+  while (cursor < before) {
+    const next = findFrom(bytes, key, cursor);
+    if (next < 0 || next >= before) break;
+    found = next;
+    cursor = next + key.length;
+  }
+  return found < 0 ? 0 : parseUnsignedAt(bytes, found + key.length);
+}
+
+export function parseDeezerSearch(body: Bytes): readonly Track[] {
+  const titleKey = asciiBytes("\"title\":");
+  const durationKey = asciiBytes("\"duration\":");
+  const previewKey = asciiBytes("\"preview\":");
+  const artistKey = asciiBytes("\"artist\":{");
+  const albumKey = asciiBytes("\"album\":{");
+  const nameKey = asciiBytes("\"name\":");
+  const coverKey = asciiBytes("\"cover_medium\":");
+  const out: Track[] = [];
+  let cursor = 0;
+  while (out.length < 30) {
+    const titleAt = findFrom(body, titleKey, cursor);
+    if (titleAt < 0) break;
+    const artistAt = findFrom(body, artistKey, titleAt);
+    const albumAt = findFrom(body, albumKey, titleAt);
+    const durationAt = findFrom(body, durationKey, titleAt);
+    const previewAt = findFrom(body, previewKey, titleAt);
+    if (artistAt < 0 || albumAt < 0 || durationAt < 0 || previewAt < 0) break;
+    const id = idBefore(body, titleAt);
+    const title = jsonStringAfter(body, titleKey, titleAt);
+    const artist = jsonStringAfter(body, nameKey, artistAt);
+    const album = jsonStringAfter(body, titleKey, albumAt);
+    const cover = jsonStringAfter(body, coverKey, albumAt);
+    const preview = jsonStringAfter(body, previewKey, previewAt);
+    const duration = parseUnsignedAt(body, durationAt + durationKey.length);
+    if (id > 0 && title.length > 0) {
+      out.push({
+        id: id,
+        title: title,
+        artist: artist,
+        album: album,
+        durationSec: duration,
+        coverUrl: cover,
+        streamUrl: octaveStreamUrl(id),
+        fallbackPreviewUrl: preview,
+      });
+    }
+    cursor = Math.max(previewAt + previewKey.length, titleAt + titleKey.length);
+  }
+  return out;
+}
+
+export function formatSeconds(value: number): Bytes {
+  const total = value >= 0 && value < 86400 ? Math.trunc(value) : 0;
+  const minutes = Math.trunc(total / 60);
+  const seconds = total % 60;
+  const left = decimalBytes(minutes);
+  const right = seconds < 10 ? concatBytes(asciiBytes("0"), decimalBytes(seconds)) : decimalBytes(seconds);
+  return concat3(left, asciiBytes(":"), right);
+}
