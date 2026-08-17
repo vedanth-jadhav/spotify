@@ -1,0 +1,41 @@
+name: Apply final binding collision fix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Give model object literals explicit emitter targets
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/core.ts')
+          s = p.read_text()
+          s = s.replace('const base = { ...model, queue: model.queue.slice(index + 1) };', 'const base: Model = { ...model, queue: model.queue.slice(index + 1) };')
+          s = s.replace('const next = { ...navigate(model, "playlist"), playlistCreated: true };', 'const next: Model = { ...navigate(model, "playlist"), playlistCreated: true };')
+          s = s.replace('const next = { ...model, playlistCreated: true };', 'const next: Model = { ...model, playlistCreated: true };')
+          s = s.replace('const next = { ...model, playlistCreated: true, playlistTracks: [...model.playlistTracks, track] };', 'const next: Model = { ...model, playlistCreated: true, playlistTracks: [...model.playlistTracks, track] };')
+          s = s.replace('const next = { ...model, playlistTracks: [] };', 'const next: Model = { ...model, playlistTracks: [] };')
+          s = s.replace('const next = { ...model, playlistTracks: [...model.playlistTracks.slice(0, index), ...model.playlistTracks.slice(index + 1)] };', 'const next: Model = { ...model, playlistTracks: [...model.playlistTracks.slice(0, index), ...model.playlistTracks.slice(index + 1)] };')
+          s = s.replace('const next = { ...model, likedTracks: exists ? model.likedTracks.filter((item) => !sameTrack(item, track)) : [...model.likedTracks, track] };', 'const next: Model = { ...model, likedTracks: exists ? model.likedTracks.filter((item) => !sameTrack(item, track)) : [...model.likedTracks, track] };')
+          s = s.replace('const next = { ...model, likedTracks: [...model.likedTracks.slice(0, index), ...model.likedTracks.slice(index + 1)] };', 'const next: Model = { ...model, likedTracks: [...model.likedTracks.slice(0, index), ...model.likedTracks.slice(index + 1)] };')
+          s = s.replace('const next = { ...model, showNowPlaying: !model.showNowPlaying };', 'const next: Model = { ...model, showNowPlaying: !model.showNowPlaying };')
+          s = s.replace('const next = { ...model, autoplay: !model.autoplay };', 'const next: Model = { ...model, autoplay: !model.autoplay };')
+          p.write_text(s)
+          PY
+      - name: Commit emitter fix
+        run: |
+          set -euo pipefail
+          git config user.name spotify-ci
+          git config user.email spotify-ci@users.noreply.github.com
+          git add src/core.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: give Native emitter explicit model targets"
+          git push
