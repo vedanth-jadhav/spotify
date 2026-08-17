@@ -214,7 +214,7 @@ export function freshModel(): Model {
     queue: [],
     showNowPlaying: true,
     autoplay: true,
-    quality: "320",
+    quality: "q320",
     playlistCreated: false,
     likedTracks: [],
     playlistTracks: [],
@@ -739,11 +739,11 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "quality_128": {
-      const next: Model = { ...model, quality: "128" };
+      const next: Model = { ...model, quality: "q128" };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "quality_320": {
-      const next: Model = { ...model, quality: "320" };
+      const next: Model = { ...model, quality: "q320" };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "quality_lossless": {
@@ -874,8 +874,8 @@ export function playlistRows(model: Model): readonly TrackRow[] {
 }
 export function hasPlaylist(model: Model): boolean { return model.playlistCreated; }
 export function searchIdle(model: Model): boolean { return model.searchPhase === "idle" && model.search.bytes.length === 0; }
-export function quality128(model: Model): boolean { return model.quality === "128"; }
-export function quality320(model: Model): boolean { return model.quality === "320"; }
+export function quality128(model: Model): boolean { return model.quality === "q128"; }
+export function quality320(model: Model): boolean { return model.quality === "q320"; }
 export function qualityLossless(model: Model): boolean { return model.quality === "lossless"; }
 export function hasNow(model: Model): boolean { return model.nowTrack.remoteId.length > 0; }
 export function hasCover(model: Model): boolean { return model.coverImage > 0; }

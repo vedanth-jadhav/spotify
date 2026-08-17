@@ -77,7 +77,7 @@ export function encodeState(state: PersistedState): Bytes {
   const out = new Uint8Array(size);
   for (let i = 0; i < MAGIC.length; i += 1) out[i] = MAGIC[i];
   let at = MAGIC.length;
-  out[at] = state.quality === "128" ? 0 : state.quality === "lossless" ? 2 : 1;
+  out[at] = state.quality === "q128" ? 0 : state.quality === "lossless" ? 2 : 1;
   out[at + 1] = state.autoplay ? 1 : 0;
   out[at + 2] = state.showNowPlaying ? 1 : 0;
   out[at + 3] = state.playlistCreated ? 1 : 0;
@@ -158,5 +158,5 @@ export function decodeState(bytes: Bytes): PersistedState | undefined {
     playlist.push(read.track);
     at = read.next;
   }
-  return { quality: qualityByte === 0 ? "128" : qualityByte === 2 ? "lossless" : "320", autoplay: autoplay, showNowPlaying: showNowPlaying, playlistCreated: playlistCreated, likedTracks: liked, playlistTracks: playlist };
+  return { quality: qualityByte === 0 ? "q128" : qualityByte === 2 ? "lossless" : "q320", autoplay: autoplay, showNowPlaying: showNowPlaying, playlistCreated: playlistCreated, likedTracks: liked, playlistTracks: playlist };
 }

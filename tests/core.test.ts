@@ -25,7 +25,7 @@ function modelWithTrack() {
 test("boot model requests persisted state without mutating defaults", () => {
   const [model] = initialModel();
   assert.equal(model.page, "home");
-  assert.equal(model.quality, "320");
+  assert.equal(model.quality, "q320");
 });
 
 test("navigation history is bounded and reversible", () => {
@@ -89,11 +89,11 @@ test("local playlist can be created, populated, and cleared", () => {
 
 test("quality, autoplay, and now-playing view controls are deterministic", () => {
   let model = freshModel();
-  assert.equal(model.quality, "320");
+  assert.equal(model.quality, "q320");
   [model] = update(model, { kind: "quality_lossless" });
   assert.equal(model.quality, "lossless");
   [model] = update(model, { kind: "quality_128" });
-  assert.equal(model.quality, "128");
+  assert.equal(model.quality, "q128");
   const autoplay = model.autoplay;
   [model] = update(model, { kind: "toggle_autoplay" });
   assert.equal(model.autoplay, !autoplay);

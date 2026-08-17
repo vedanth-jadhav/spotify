@@ -1,7 +1,7 @@
 import { asciiBytes } from "@native-sdk/core";
 
 export type Bytes = Uint8Array;
-export type OctaveQuality = "128" | "320" | "lossless";
+export type OctaveQuality = "q128" | "q320" | "lossless";
 
 export interface Track {
   readonly remoteId: Bytes;
@@ -21,7 +21,7 @@ export interface ResolvedTrack {
 export const OCTAVE_ORIGIN = asciiBytes("https://music.octavestreaming.com");
 export const OCTAVE_API = asciiBytes("https://api.octavestreaming.com/api");
 export const DEEZER_API = asciiBytes("https://api.deezer.com");
-export const OCTAVE_DEFAULT_QUALITY: OctaveQuality = "320";
+export const OCTAVE_DEFAULT_QUALITY: OctaveQuality = "q320";
 
 const HEX = asciiBytes("0123456789ABCDEF");
 
@@ -95,7 +95,7 @@ export function octaveResolveUrl(remoteId: Bytes): Bytes {
 }
 
 export function octaveResolveUrlWithQuality(remoteId: Bytes, quality: OctaveQuality): Bytes {
-  const segment = quality === "128" ? asciiBytes("128") : quality === "lossless" ? asciiBytes("lossless") : asciiBytes("320");
+  const segment = quality === "q128" ? asciiBytes("128") : quality === "lossless" ? asciiBytes("lossless") : asciiBytes("320");
   return concat5(OCTAVE_API, asciiBytes("/track/"), remoteId, asciiBytes("?quality="), segment);
 }
 

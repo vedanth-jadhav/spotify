@@ -26,13 +26,13 @@ test("library and settings persistence round-trips without JSON", () => {
 
 test("persistence rejects truncated and unrelated data", () => {
   assert.equal(decodeState(b("nope")), undefined);
-  const encoded = encodeState({ quality: "320", autoplay: true, showNowPlaying: true, playlistCreated: false, likedTracks: [track], playlistTracks: [] });
+  const encoded = encodeState({ quality: "q320", autoplay: true, showNowPlaying: true, playlistCreated: false, likedTracks: [track], playlistTracks: [] });
   assert.equal(decodeState(encoded.slice(0, 12)), undefined);
 });
 
 
 test("persistence rejects invalid header enum and boolean bytes", () => {
-  const original = encodeState({ quality: "320", autoplay: true, showNowPlaying: true, playlistCreated: false, likedTracks: [], playlistTracks: [] });
+  const original = encodeState({ quality: "q320", autoplay: true, showNowPlaying: true, playlistCreated: false, likedTracks: [], playlistTracks: [] });
   for (const [offset, value] of [[5, 9], [6, 2], [7, 2], [8, 2]]) {
     const corrupted = original.slice();
     corrupted[offset] = value;
