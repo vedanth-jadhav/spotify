@@ -1,0 +1,34 @@
+name: Apply native markup schema fix
+
+on:
+  push:
+    branches: ["feat/native-octave-client"]
+    paths: [".github/workflows/apply-markup-fix.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/native-octave-client
+      - name: Remove unsupported context-menu attributes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/app.native')
+          s = p.read_text()
+          s = s.replace('<menu-item on-press="queue_track:{t.id}" label="Add to queue">', '<menu-item on-press="queue_track:{t.id}">')
+          s = s.replace('<menu-item on-press="toggle_like:{t.id}" label="Save to Liked Songs">', '<menu-item on-press="toggle_like:{t.id}">')
+          p.write_text(s)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "spotify-ci"
+          git config user.email "spotify-ci@users.noreply.github.com"
+          git add src/app.native
+          git commit -m "fix: use native context menu item schema"
+          git push origin HEAD:feat/native-octave-client
