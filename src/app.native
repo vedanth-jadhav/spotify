@@ -14,9 +14,9 @@
     <button size="sm" variant="ghost" label="Profile">V</button>
   </row>
 
-  <row grow="1" gap="8" padding="8" min-height="0">
+  <row grow="1" gap="8" padding="8">
     <panel width="302" background="surface" radius="lg" label="Your Library">
-      <column grow="1" min-height="0">
+      <column grow="1">
         <row height="58" padding="14" gap="10" cross="center">
           <button grow="1" variant="ghost" on-press="go_library">Your Library</button>
           <button size="sm" variant="ghost" label="Create">+</button>
@@ -50,7 +50,7 @@
       </column>
     </panel>
 
-    <panel grow="1" min-width="420" background="surface" radius="lg" label="Main content">
+    <panel grow="1" background="surface" radius="lg" label="Main content">
       <if test="{pageHome}">
         <scroll grow="1" label="Home"><column padding="24" gap="24">
           <text><span weight="bold" scale="1.85">Good afternoon</span></text>
@@ -100,7 +100,7 @@
     </panel>
 
     <panel width="302" background="surface" radius="lg" label="Now playing details">
-      <column grow="1" min-height="0"><row height="54" padding="14" cross="center"><text weight="bold">{nowTitle}</text><spacer grow="1" /><button size="sm" variant="ghost">...</button></row>
+      <column grow="1"><row height="54" padding="14" cross="center"><text weight="bold">{nowTitle}</text><spacer grow="1" /><button size="sm" variant="ghost">...</button></row>
         <scroll grow="1"><column padding="14" gap="16"><panel height="258" radius="lg" background="surface_subtle"><row grow="1" main="center" cross="center"><text><span scale="4">Music</span></text></row></panel><column gap="5"><text><span weight="bold" scale="1.25">{nowTitle}</span></text><text foreground="text_muted">{nowArtist}</text></column><panel padding="16" background="surface_subtle" radius="lg"><column gap="7"><text weight="bold">About the artist</text><text foreground="text_muted">{nowArtist}</text><text size="sm" foreground="text_muted">Streaming through the Octave provider adapter with native audio playback.</text></column></panel><panel padding="16" background="surface_subtle" radius="lg"><row cross="center"><text weight="bold">Next in queue</text><spacer grow="1" /><button size="sm" variant="ghost" on-press="go_queue">Open queue</button></row></panel></column></scroll>
       </column>
     </panel>
