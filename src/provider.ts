@@ -101,6 +101,10 @@ export function octaveTrackRadioUrl(remoteId: Bytes): Bytes {
   return concat3(OCTAVE_API, asciiBytes("/track/"), concatBytes(remoteId, asciiBytes("/radio")));
 }
 
+export function octaveTrendingUrl(): Bytes {
+  return concatBytes(OCTAVE_API, asciiBytes("/search/trending"));
+}
+
 export function octaveLyricsUrl(): Bytes {
   return concatBytes(OCTAVE_API, asciiBytes("/lyrics"));
 }
