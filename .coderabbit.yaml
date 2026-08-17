@@ -1,0 +1,15 @@
+language: en-US
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  path_instructions:
+    - path: "src/**"
+      instructions: "Prioritize correctness, Native SDK subset compatibility, memory/CPU efficiency, audio lifecycle races, stale async event handling, bounds safety, accessibility, and accidental WebView/JS-runtime regressions."
+    - path: "tests/**"
+      instructions: "Demand deterministic tests for queue, repeat, shuffle, endpoint encoding, parser failures, and state-machine edge cases."
+chat:
+  auto_reply: true

@@ -1,0 +1,8 @@
+node_modules/
+.native/
+zig-cache/
+zig-out/
+dist/
+.DS_Store
+*.dmg
+coverage/
