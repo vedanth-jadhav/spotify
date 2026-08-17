@@ -1,0 +1,62 @@
+name: Capture native app screenshot
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: native-screenshot-feat-native-octave-client
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  screenshot:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/native-octave-client
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.16.0
+      - run: npm ci
+      - name: Validate native sources
+        run: npx --no-install native check --yes
+      - name: Clean generated caches
+        run: rm -rf .native/build .zig-cache zig-out
+      - name: Build with automation
+        run: npx --no-install native build --yes -Dautomation=true
+      - name: Use dark reference appearance
+        shell: bash
+        run: |
+          defaults write -g AppleInterfaceStyle Dark
+          killall cfprefsd || true
+      - name: Launch and capture deterministic canvas
+        shell: bash
+        run: |
+          ./zig-out/bin/spotify > /tmp/spotify-native.log 2>&1 &
+          echo $! > /tmp/spotify-native.pid
+          npx --no-install native automate wait
+          npx --no-install native automate resize 1440 900 1
+          npx --no-install native automate snapshot
+          CAPTURE="$(npx --no-install native automate screenshot spotify-canvas 1 | tail -1)"
+          test -s "$CAPTURE"
+          mkdir -p docs/screenshots
+          cp "$CAPTURE" docs/screenshots/home.png
+      - name: Stop app
+        if: always()
+        shell: bash
+        run: |
+          if test -f /tmp/spotify-native.pid; then kill "$(cat /tmp/spotify-native.pid)" || true; fi
+          if test -f /tmp/spotify-native.log; then tail -200 /tmp/spotify-native.log; fi
+      - name: Commit screenshot
+        shell: bash
+        run: |
+          git config user.name "spotify-ci"
+          git config user.email "spotify-ci@users.noreply.github.com"
+          git add docs/screenshots/home.png
+          git diff --cached --quiet && exit 0
+          git commit -m "docs: capture dark native app home screen"
+          git push origin HEAD:feat/native-octave-client

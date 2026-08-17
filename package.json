@@ -1,0 +1,22 @@
+{
+  "name": "spotify-native-octave",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.15.0"
+  },
+  "scripts": {
+    "postinstall": "node scripts/patch-native-sdk.mjs",
+    "check": "native check",
+    "test:unit": "tsx --test tests/*.test.ts",
+    "test": "npm run test:unit && native test",
+    "build": "native build",
+    "verify": "npm run check && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@native-sdk/cli": "0.8.3",
+    "tsx": "4.23.1",
+    "typescript": "5.9.2"
+  }
+}

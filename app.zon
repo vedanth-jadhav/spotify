@@ -1,0 +1,35 @@
+.{
+    .id = "com.vedanth.spotify.native",
+    .name = "spotify",
+    .display_name = "Spotify",
+    .description = "A lightweight native music client backed by Octave Streaming.",
+    .version = "0.1.0",
+    .platforms = .{ "macos" },
+    .permissions = .{ "view", "network", "filesystem" },
+    .capabilities = .{ "native_views", "gpu_surfaces", "network", "filesystem" },
+    .theme = "geist",
+    .theme_accent = "#1ED760",
+    .shell = .{
+        .windows = .{
+            .{
+                .label = "main",
+                .title = "Spotify",
+                .width = 1440,
+                .height = 900,
+                .min_width = 960,
+                .min_height = 640,
+                .restore_policy = "center_on_primary",
+                .titlebar = "hidden_inset_tall",
+                .views = .{
+                    .{ .label = "spotify-canvas", .kind = "gpu_surface", .fill = true, .role = "application", .accessibility_label = "Spotify music player", .gpu_backend = "metal", .gpu_pixel_format = "bgra8_unorm", .gpu_present_mode = "timer", .gpu_alpha_mode = "opaque", .gpu_color_space = "srgb", .gpu_vsync = true },
+                },
+            },
+        },
+    },
+    .security = .{
+        .navigation = .{
+            .allowed_origins = .{ "zero://app", "zero://inline", "https://music.octavestreaming.com", "https://api.octavestreaming.com", "https://cdn-images.dzcdn.net", "https://cdnt-preview.dzcdn.net" },
+            .external_links = .{ .action = "deny" },
+        },
+    },
+}
