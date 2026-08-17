@@ -635,7 +635,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       const item = model.queue[index];
       if (item === undefined) return [model, Cmd.none];
       const track = item.track;
-      const base = { ...model, queue: model.queue.slice(index + 1) };
+      const base: Model = { ...model, queue: model.queue.slice(index + 1) };
       const contextId = model.nowId >= 1 && model.nowId <= 30 ? Math.trunc(model.nowId) : 1;
       const next = startTrack(base, contextId, track, model.contextTracks, false);
       if (track.coverUrl.length === 0) {
@@ -662,7 +662,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return [{ ...model, queue: [...model.queue, { id: 1, track: track }] }, Cmd.none];
     }
     case "create_playlist": {
-      const next = { ...navigate(model, "playlist"), playlistCreated: true };
+      const next: Model = { ...navigate(model, "playlist"), playlistCreated: true };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "add_to_playlist": {
@@ -672,14 +672,14 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       const track = trackById(model, id);
       if (track === undefined) return [model, Cmd.none];
       if (trackIn(model.playlistTracks, track) || model.playlistTracks.length >= 30) {
-        const next = { ...model, playlistCreated: true };
+        const next: Model = { ...model, playlistCreated: true };
         return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
       }
-      const next = { ...model, playlistCreated: true, playlistTracks: [...model.playlistTracks, track] };
+      const next: Model = { ...model, playlistCreated: true, playlistTracks: [...model.playlistTracks, track] };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "clear_playlist": {
-      const next = { ...model, playlistTracks: [] };
+      const next: Model = { ...model, playlistTracks: [] };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "remove_playlist_track": {
@@ -687,7 +687,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       if (!(raw >= 1 && raw <= 30)) return [model, Cmd.none];
       const index = Math.trunc(raw) - 1;
       if (index < 0 || index >= model.playlistTracks.length) return [model, Cmd.none];
-      const next = { ...model, playlistTracks: [...model.playlistTracks.slice(0, index), ...model.playlistTracks.slice(index + 1)] };
+      const next: Model = { ...model, playlistTracks: [...model.playlistTracks.slice(0, index), ...model.playlistTracks.slice(index + 1)] };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "add_now_to_playlist": {
@@ -706,7 +706,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       if (track === undefined) return [model, Cmd.none];
       const exists = trackIn(model.likedTracks, track);
       if (!exists && model.likedTracks.length >= 30) return [model, Cmd.none];
-      const next = { ...model, likedTracks: exists ? model.likedTracks.filter((item) => !sameTrack(item, track)) : [...model.likedTracks, track] };
+      const next: Model = { ...model, likedTracks: exists ? model.likedTracks.filter((item) => !sameTrack(item, track)) : [...model.likedTracks, track] };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "remove_liked_track": {
@@ -714,7 +714,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       if (!(raw >= 1 && raw <= 30)) return [model, Cmd.none];
       const index = Math.trunc(raw) - 1;
       if (index < 0 || index >= model.likedTracks.length) return [model, Cmd.none];
-      const next = { ...model, likedTracks: [...model.likedTracks.slice(0, index), ...model.likedTracks.slice(index + 1)] };
+      const next: Model = { ...model, likedTracks: [...model.likedTracks.slice(0, index), ...model.likedTracks.slice(index + 1)] };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "toggle_now_like": {
@@ -722,7 +722,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       if (track === undefined) return [model, Cmd.none];
       const exists = trackIn(model.likedTracks, track);
       if (!exists && model.likedTracks.length >= 30) return [model, Cmd.none];
-      const next = { ...model, likedTracks: exists ? model.likedTracks.filter((item) => !sameTrack(item, track)) : [...model.likedTracks, track] };
+      const next: Model = { ...model, likedTracks: exists ? model.likedTracks.filter((item) => !sameTrack(item, track)) : [...model.likedTracks, track] };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "toggle_shuffle": {
@@ -731,11 +731,11 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
     }
     case "cycle_repeat": return [{ ...model, repeat: model.repeat === "off" ? "context" : model.repeat === "context" ? "one" : "off" }, Cmd.none];
     case "toggle_now_playing": {
-      const next = { ...model, showNowPlaying: !model.showNowPlaying };
+      const next: Model = { ...model, showNowPlaying: !model.showNowPlaying };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "toggle_autoplay": {
-      const next = { ...model, autoplay: !model.autoplay };
+      const next: Model = { ...model, autoplay: !model.autoplay };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "quality_128": {
