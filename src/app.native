@@ -1,0 +1,142 @@
+<!-- Native Spotify-style desktop shell. No WebView is used. The three-pane layout
+     mirrors the current desktop information architecture: library rail, main
+     content, optional contextual panel, plus a persistent transport bar. -->
+<column background="#000000" foreground="#ffffff">
+  <row height="64" padding="10" gap="10" cross="center" background="#000000" window-drag="true" label="Application header">
+    <spacer width="72" />
+    <button size="sm" variant="ghost" on-press="go_back" label="Back">‹</button>
+    <button size="sm" variant="ghost" on-press="go_forward" label="Forward">›</button>
+    <button size="sm" variant="ghost" on-press="go_home" label="Home">⌂</button>
+    <search-field text="{searchText}" placeholder="What do you want to play?" width="420" on-input="search_edit" label="Search music" />
+    <spacer grow="1" />
+    <button size="sm" variant="ghost">Explore Premium</button>
+    <button size="sm" variant="ghost" label="Notifications">●</button>
+    <button size="sm" variant="ghost" label="Profile">V</button>
+  </row>
+
+  <row grow="1" gap="8" padding-left="8" padding-right="8" min-height="0">
+    <!-- Library sidebar -->
+    <panel width="302" background="#121212" radius="lg" label="Your Library">
+      <column grow="1" min-height="0">
+        <row height="58" padding="14" gap="10" cross="center">
+          <button grow="1" variant="ghost" on-press="go_library">Your Library</button>
+          <button size="sm" variant="ghost" label="Create">＋</button>
+        </row>
+        <row padding-left="12" padding-right="12" padding-bottom="8" gap="8">
+          <badge variant="secondary">Playlists</badge>
+          <badge variant="secondary">Artists</badge>
+          <badge variant="secondary">Albums</badge>
+        </row>
+        <row padding-left="12" padding-right="12" padding-bottom="8" cross="center">
+          <text size="sm" foreground="#b3b3b3">⌕</text>
+          <spacer grow="1" />
+          <text size="sm" foreground="#b3b3b3">Recents ▾</text>
+        </row>
+        <scroll grow="1" label="Library items">
+          <column padding="6" gap="2">
+            <list-item height="62" padding="8" gap="10" cross="center" on-press="go_library" label="Liked Songs">
+              <panel width="46" height="46" radius="sm" background="#5038a0"><row grow="1" main="center" cross="center"><text>♥</text></row></panel>
+              <column grow="1" gap="2"><text wrap="false">Liked Songs</text><text size="sm" foreground="#b3b3b3">Playlist</text></column>
+            </list-item>
+            <list-item height="62" padding="8" gap="10" cross="center" on-press="go_search" label="Discover Octave">
+              <panel width="46" height="46" radius="sm" background="#282828"><row grow="1" main="center" cross="center"><text>♫</text></row></panel>
+              <column grow="1" gap="2"><text wrap="false">Discover on Octave</text><text size="sm" foreground="#b3b3b3">Catalog</text></column>
+            </list-item>
+            <for each="likedRows" as="t" key="id">
+              <list-item key="{t.id}" height="58" padding="8" gap="10" cross="center" on-press="play_track:{t.id}" label="{t.title}">
+                <panel width="42" height="42" radius="sm" background="#282828"><row grow="1" main="center" cross="center"><text>♪</text></row></panel>
+                <column grow="1" gap="2"><text wrap="false">{t.title}</text><text size="sm" foreground="#b3b3b3" wrap="false">{t.artist}</text></column>
+              </list-item>
+            </for>
+          </column>
+        </scroll>
+      </column>
+    </panel>
+
+    <!-- Main surface -->
+    <panel grow="1" min-width="420" background="#121212" radius="lg" label="Main content">
+      <if test="{pageHome}">
+        <scroll grow="1" label="Home">
+          <column padding="24" gap="24">
+            <text><span weight="bold" scale="1.85">Good afternoon</span></text>
+            <grid columns="2" gap="8">
+              <list-item height="64" background="#282828" radius="sm" padding="8" on-press="go_library"><text>♥  Liked Songs</text></list-item>
+              <list-item height="64" background="#282828" radius="sm" padding="8" on-press="go_search"><text>♫  Discover on Octave</text></list-item>
+            </grid>
+            <row cross="center"><text><span weight="bold" scale="1.35">Made for your next listen</span></text><spacer grow="1" /><button size="sm" variant="ghost" on-press="go_search">Show all</button></row>
+            <grid columns="4" gap="16">
+              <list-item height="232" padding="12" background="#181818" radius="md" on-press="go_search"><column gap="10"><panel height="150" background="#252525" radius="md"><row grow="1" main="center" cross="center"><text><span scale="2">♫</span></text></row></panel><text weight="bold">Discover Weekly</text><text size="sm" foreground="#b3b3b3">Fresh picks from Octave</text></column></list-item>
+              <list-item height="232" padding="12" background="#181818" radius="md" on-press="go_search"><column gap="10"><panel height="150" background="#252525" radius="md"><row grow="1" main="center" cross="center"><text><span scale="2">◌</span></text></row></panel><text weight="bold">Daily Mix</text><text size="sm" foreground="#b3b3b3">Jump back in</text></column></list-item>
+              <list-item height="232" padding="12" background="#181818" radius="md" on-press="go_search"><column gap="10"><panel height="150" background="#252525" radius="md"><row grow="1" main="center" cross="center"><text><span scale="2">▣</span></text></row></panel><text weight="bold">Release Radar</text><text size="sm" foreground="#b3b3b3">New music</text></column></list-item>
+              <list-item height="232" padding="12" background="#181818" radius="md" on-press="go_search"><column gap="10"><panel height="150" background="#252525" radius="md"><row grow="1" main="center" cross="center"><text><span scale="2">∞</span></text></row></panel><text weight="bold">On Repeat</text><text size="sm" foreground="#b3b3b3">Your current rotation</text></column></list-item>
+            </grid>
+          </column>
+        </scroll>
+      </if>
+
+      <if test="{pageSearch}">
+        <scroll grow="1" label="Search results">
+          <column padding="24" gap="18">
+            <if test="{searchLoading}"><row height="80" main="center" cross="center"><progress-indicator /><text foreground="#b3b3b3">Searching Octave…</text></row></if>
+            <if test="{searchFailed}"><panel padding="20" background="#202020" radius="md"><column gap="6"><text weight="bold">Search unavailable</text><text size="sm" foreground="#b3b3b3">{error}</text></column></panel></if>
+            <if test="{searchReady}">
+              <text><span weight="bold" scale="1.55">Songs</span></text>
+              <list role="list" label="Songs">
+                <for each="trackRows" as="t" key="id">
+                  <list-item key="{t.id}" height="58" padding="8" gap="12" cross="center" selected="{t.active}" on-press="play_track:{t.id}" role="listitem" label="{t.title}">
+                    <panel width="42" height="42" radius="sm" background="#282828"><row grow="1" main="center" cross="center"><text>♪</text></row></panel>
+                    <column grow="1" gap="2"><text wrap="false">{t.title}</text><text size="sm" foreground="#b3b3b3" wrap="false">{t.artist}</text></column>
+                    <text width="180" size="sm" foreground="#b3b3b3" wrap="false">{t.album}</text>
+                    <if test="{t.liked}"><text foreground="#1ed760">♥</text></if><else><text foreground="#777777">♡</text></else>
+                    <text width="42" size="sm" foreground="#b3b3b3">{t.duration}</text>
+                    <context-menu>
+                      <menu-item on-press="queue_track:{t.id}">Add to queue</menu-item>
+                      <menu-item on-press="toggle_like:{t.id}">Save to Liked Songs</menu-item>
+                    </context-menu>
+                  </list-item>
+                </for>
+              </list>
+            </if>
+          </column>
+        </scroll>
+      </if>
+
+      <if test="{pageLibrary}">
+        <scroll grow="1" label="Liked Songs">
+          <column padding="24" gap="18">
+            <row gap="20" cross="end"><panel width="190" height="190" radius="md" background="#5038a0"><row grow="1" main="center" cross="center"><text><span scale="3">♥</span></text></row></panel><column gap="8"><text size="sm">Playlist</text><text><span weight="bold" scale="2.2">Liked Songs</span></text><text foreground="#b3b3b3">Your saved tracks</text></column></row>
+            <list role="list" label="Liked tracks"><for each="likedRows" as="t" key="id"><list-item key="{t.id}" height="56" padding="8" gap="12" cross="center" on-press="play_track:{t.id}"><text width="30">♪</text><column grow="1"><text>{t.title}</text><text size="sm" foreground="#b3b3b3">{t.artist}</text></column><text width="180" size="sm" foreground="#b3b3b3">{t.album}</text><text width="44" size="sm">{t.duration}</text></list-item></for></list>
+          </column>
+        </scroll>
+      </if>
+
+      <if test="{pageQueue}">
+        <scroll grow="1" label="Queue"><column padding="24" gap="16"><text><span weight="bold" scale="1.6">Queue</span></text><text foreground="#b3b3b3">Next in queue</text><list><for each="queueRows" as="t" key="id"><list-item key="{t.id}" height="56" padding="8" gap="12" cross="center" on-press="play_track:{t.id}"><text width="28">☷</text><column grow="1"><text>{t.title}</text><text size="sm" foreground="#b3b3b3">{t.artist}</text></column><text size="sm">{t.duration}</text></list-item></for></list></column></scroll>
+      </if>
+
+      <if test="{pageLyrics}">
+        <scroll grow="1" label="Lyrics"><column padding="42" gap="26"><text foreground="#b3b3b3">Lyrics</text><text><span weight="bold" scale="2">{nowTitle}</span></text><text foreground="#b3b3b3">Synced lyric transport is isolated behind the Octave lyrics endpoint. Until that undocumented route returns a supported payload, playback remains fully usable without inventing lyric text.</text></column></scroll>
+      </if>
+    </panel>
+
+    <!-- Spotify's contextual right panel -->
+    <panel width="302" background="#121212" radius="lg" label="Now playing details">
+      <column grow="1" min-height="0">
+        <row height="54" padding="14" cross="center"><text weight="bold">{nowTitle}</text><spacer grow="1" /><button size="sm" variant="ghost">•••</button></row>
+        <scroll grow="1"><column padding="14" gap="16"><panel height="258" radius="lg" background="#242424"><row grow="1" main="center" cross="center"><text><span scale="4">♫</span></text></row></panel><column gap="5"><text><span weight="bold" scale="1.25">{nowTitle}</span></text><text foreground="#b3b3b3">{nowArtist}</text></column><panel padding="16" background="#242424" radius="lg"><column gap="7"><text weight="bold">About the artist</text><text foreground="#b3b3b3">{nowArtist}</text><text size="sm" foreground="#b3b3b3">Streaming through the Octave provider adapter with native audio playback.</text></column></panel><panel padding="16" background="#242424" radius="lg"><row cross="center"><text weight="bold">Next in queue</text><spacer grow="1" /><button size="sm" variant="ghost" on-press="go_queue">Open queue</button></row></panel></column></scroll>
+      </column>
+    </panel>
+  </row>
+
+  <!-- Persistent transport -->
+  <row height="92" padding="12" gap="12" cross="center" background="#000000" label="Now playing bar">
+    <panel width="56" height="56" radius="sm" background="#282828"><row grow="1" main="center" cross="center"><text>♪</text></row></panel>
+    <column width="220" gap="2"><text wrap="false">{nowTitle}</text><text size="sm" foreground="#b3b3b3" wrap="false">{nowArtist}</text></column>
+    <if test="{hasNow}"><if test="{nowLiked}"><button size="sm" variant="ghost" on-press="toggle_like:{nowId}">♥</button></if><else><button size="sm" variant="ghost" on-press="toggle_like:{nowId}">♡</button></else></if>
+    <column grow="1" gap="7" cross="center">
+      <row gap="12" cross="center" main="center"><button size="sm" variant="ghost" selected="{shuffle}" on-press="toggle_shuffle">Shuffle</button><button size="sm" variant="ghost" on-press="prev_track">◀</button><button variant="primary" on-press="toggle_play" label="Play or pause"><icon name="{playIcon}" /></button><button size="sm" variant="ghost" on-press="next_track">▶</button><button size="sm" variant="ghost" on-press="cycle_repeat">{repeatLabel}</button></row>
+      <row grow="1" cross="center" gap="8"><text width="42" size="sm" foreground="#b3b3b3" text-alignment="end">{positionLabel}</text><slider grow="1" value="{seekFraction}" on-change="scrubbed" label="Seek" /><text width="42" size="sm" foreground="#b3b3b3">{durationLabel}</text></row>
+    </column>
+    <row width="250" gap="8" cross="center"><button size="sm" variant="ghost" on-press="go_lyrics">Lyrics</button><button size="sm" variant="ghost" on-press="go_queue">Queue</button><text size="sm">Vol</text><slider width="96" value="{volumeFraction}" on-change="volume_changed" label="Volume" /></row>
+  </row>
+</column>
