@@ -769,7 +769,8 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return [{ ...model, volumePermille: permille }, Cmd.audioSetVolume("player", msg.fraction)];
     }
     case "audio_event": {
-      switch (msg.state) {
+      const audioState: AudioState = msg.state;
+      switch (audioState) {
         case "loaded": {
           const posRaw = msg.positionMs;
           const durationRaw = msg.durationMs;
