@@ -65,7 +65,7 @@
             <text width="180" size="sm" foreground="text_muted" wrap="false">{t.album}</text>
             <if test="{t.liked}"><text foreground="accent">Saved</text></if><else><text foreground="disabled">Save</text></else>
             <text width="42" size="sm" foreground="text_muted">{t.duration}</text>
-            <context-menu><menu-item on-press="queue_track:{t.id}" label="Add to queue">Add to queue</menu-item><menu-item on-press="toggle_like:{t.id}" label="Save to Liked Songs">Save to Liked Songs</menu-item></context-menu>
+            <context-menu><menu-item on-press="queue_track:{t.id}">Add to queue</menu-item><menu-item on-press="toggle_like:{t.id}">Save to Liked Songs</menu-item></context-menu>
           </list-item></for>
         </list></if>
       </column></scroll></if>
