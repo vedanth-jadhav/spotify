@@ -3,7 +3,9 @@ name: Apply native compatibility fix
 on:
   push:
     branches: ["feat/native-octave-client"]
-    paths: [".github/workflows/apply-markup-fix.yml"]
+    paths:
+      - ".github/native-integer.patch"
+      - ".github/workflows/apply-markup-fix.yml"
 
 permissions:
   contents: write
@@ -15,119 +17,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feat/native-octave-client
-      - name: Tighten integer state domains for external compiler
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          p = Path('src/core.ts')
-          s = p.read_text()
-
-          def sub(pattern, replacement, name):
-              global s
-              s2, count = re.subn(pattern, replacement, s, count=1, flags=re.S)
-              if count != 1:
-                  raise SystemExit(f'{name}: expected 1 replacement, got {count}')
-              s = s2
-
-          sub(
-              r'function editDraft\(draft: Draft, edit: TextInputEvent\): Draft \{.*?\n\}',
-              '''function editDraft(draft: Draft, edit: TextInputEvent): Draft {
-  const state = draftState(draft);
-  let next = applyTextInputEvent(state, edit, MAX_SEARCH);
-  if (next === null) {
-    const clamped = clampedInsertEvent(state, edit, MAX_SEARCH);
-    if (clamped === null) return draft;
-    next = applyTextInputEvent(state, clamped, MAX_SEARCH);
-    if (next === null) return draft;
-  }
-  const anchorRaw = next.selection.anchor;
-  const focusRaw = next.selection.focus;
-  const compStartRaw = next.composition === null ? -1 : next.composition.start;
-  const compEndRaw = next.composition === null ? -1 : next.composition.end;
-  const anchor = anchorRaw >= 0 && anchorRaw <= MAX_SEARCH ? Math.trunc(anchorRaw) : 0;
-  const focus = focusRaw >= 0 && focusRaw <= MAX_SEARCH ? Math.trunc(focusRaw) : anchor;
-  const compStart = compStartRaw >= -1 && compStartRaw <= MAX_SEARCH ? Math.trunc(compStartRaw) : -1;
-  const compEnd = compEndRaw >= -1 && compEndRaw <= MAX_SEARCH ? Math.trunc(compEndRaw) : -1;
-  return { bytes: next.text, anchor: anchor, focus: focus, compStart: compStart, compEnd: compEnd };
-}''',
-              'editDraft'
-          )
-
-          sub(
-              r'function navigate\(model: Model, page: Page\): Model \{.*?\n\}',
-              '''function navigate(model: Model, page: Page): Model {
-  if (model.page === page) return model;
-  const rawIndex = model.historyIndex;
-  const safeIndex = rawIndex >= 0 && rawIndex <= 99 ? Math.trunc(rawIndex) : 0;
-  const kept = model.history.slice(0, safeIndex + 1);
-  const history = kept.length >= 99 ? [...kept.slice(1), page] : [...kept, page];
-  const nextRaw = history.length - 1;
-  const nextIndex = nextRaw >= 0 && nextRaw <= 99 ? Math.trunc(nextRaw) : 0;
-  return { ...model, page: page, history: history, historyIndex: nextIndex };
-}''',
-              'navigate'
-          )
-
-          sub(
-              r'function startTrack\(model: Model, id: number, track: Track, fallback: boolean\): Model \{.*?\n\}',
-              '''function startTrack(model: Model, id: number, track: Track, fallback: boolean): Model {
-  const safeId = id >= 1 && id <= 30 ? Math.trunc(id) : 0;
-  if (safeId === 0) return model;
-  const secondsRaw = track.durationSec;
-  const seconds = secondsRaw >= 0 && secondsRaw <= 86400 ? Math.trunc(secondsRaw) : 0;
-  return {
-    ...model,
-    nowId: safeId,
-    queue: dequeue(model, safeId),
-    playing: true,
-    buffering: false,
-    loadPending: true,
-    fallbackPlayback: fallback,
-    audioReady: false,
-    positionMs: 0,
-    durationMs: seconds * 1000,
-    errorText: new Uint8Array(0),
-  };
-}''',
-              'startTrack'
-          )
-
-          sub(
-              r'    case "go_back": \{.*?    case "search_edit":',
-              '''    case "go_back": {
-      const rawIndex = model.historyIndex;
-      if (!(rawIndex > 0 && rawIndex <= 99)) return [model, Cmd.none];
-      const index = Math.trunc(rawIndex) - 1;
-      return [{ ...model, historyIndex: index, page: model.history[index] }, Cmd.none];
-    }
-    case "go_forward": {
-      const rawIndex = model.historyIndex;
-      if (!(rawIndex >= 0 && rawIndex < 99)) return [model, Cmd.none];
-      const current = Math.trunc(rawIndex);
-      if (current + 1 >= model.history.length) return [model, Cmd.none];
-      const index = current + 1;
-      return [{ ...model, historyIndex: index, page: model.history[index] }, Cmd.none];
-    }
-    case "search_edit":''',
-              'history cases'
-          )
-
-          s = s.replace(
-              'const id = raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;',
-              'const id = raw >= 1 && raw <= 30 ? Math.trunc(raw) : 0;'
-          )
-
-          p.write_text(s)
-          PY
-      - name: Show changed boundaries
-        run: git diff -- src/core.ts
+      - name: Apply verified compiler patch
+        run: git apply .github/native-integer.patch
       - name: Commit patch
         run: |
           git config user.name "spotify-ci"
           git config user.email "spotify-ci@users.noreply.github.com"
           git add src/core.ts
-          git diff --cached --quiet && exit 0
           git commit -m "fix: bound native integer state domains"
           git push origin HEAD:feat/native-octave-client
