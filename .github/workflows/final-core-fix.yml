@@ -1,7 +1,9 @@
 name: Commit final ScriptC source fix
 
 on:
-  workflow_dispatch:
+  push:
+    branches: ["feat/native-octave-client"]
+    paths: [".github/workflows/final-core-fix.yml"]
 
 permissions:
   contents: write
