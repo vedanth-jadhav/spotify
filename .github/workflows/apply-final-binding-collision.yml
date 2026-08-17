@@ -1,0 +1,29 @@
+name: Apply final binding collision fix
+
+on:
+  push:
+    branches: ["feat/native-octave-client"]
+    paths:
+      - ".github/final-binding-collision.patch"
+      - ".github/workflows/apply-final-binding-collision.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/native-octave-client
+      - run: git apply .github/final-binding-collision.patch
+      - name: Commit source fix
+        shell: bash
+        run: |
+          rm .github/final-binding-collision.patch .github/workflows/apply-final-binding-collision.yml
+          git config user.name "spotify-ci"
+          git config user.email "spotify-ci@users.noreply.github.com"
+          git add src/core.ts .github/final-binding-collision.patch .github/workflows/apply-final-binding-collision.yml
+          git commit -m "fix: remove duplicate cover image binding helper"
+          git push origin HEAD:feat/native-octave-client
