@@ -1,0 +1,32 @@
+name: Apply consolidated CodeRabbit fixes
+
+on:
+  push:
+    branches: ["feat/native-octave-client"]
+    paths:
+      - ".github/coderabbit-fixes.patch"
+      - ".github/workflows/apply-coderabbit-fixes.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/native-octave-client
+      - name: Apply reviewed fixes
+        run: git apply .github/coderabbit-fixes.patch
+      - name: Generate deterministic npm lockfile
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Commit review fixes
+        shell: bash
+        run: |
+          rm .github/coderabbit-fixes.patch .github/workflows/apply-coderabbit-fixes.yml
+          git config user.name "spotify-ci"
+          git config user.email "spotify-ci@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: address CodeRabbit review findings"
+          git push origin HEAD:feat/native-octave-client
