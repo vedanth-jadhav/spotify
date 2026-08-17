@@ -541,6 +541,9 @@ export function trackRows(model: Model): readonly TrackRow[] {
 export function likedRows(model: Model): readonly TrackRow[] { return trackRows(model).filter((row) => row.liked); }
 export function queueRows(model: Model): readonly TrackRow[] { return model.queue.map((item) => trackRows(model).find((row) => row.id === item.id)).filter((row) => row !== undefined); }
 export function hasNow(model: Model): boolean { return model.nowId !== 0; }
+export function hasCover(_model: Model): boolean { return false; }
+export function coverImage(_model: Model): number { return 0; }
+export function repeatActive(model: Model): boolean { return model.repeat !== "off"; }
 export function nowTitle(model: Model): Bytes { const track = currentTrack(model); return track === undefined ? asciiBytes("Not playing") : track.title; }
 export function nowArtist(model: Model): Bytes { const track = currentTrack(model); return track === undefined ? asciiBytes("Choose something to play") : track.artist; }
 export function nowAlbum(model: Model): Bytes { const track = currentTrack(model); return track === undefined ? new Uint8Array(0) : track.album; }
