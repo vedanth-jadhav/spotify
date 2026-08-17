@@ -1,0 +1,174 @@
+name: Apply dynamic cover art integration
+
+on:
+  push:
+    branches: ["feat/native-octave-client"]
+    paths: [".github/workflows/apply-cover-art.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/native-octave-client
+      - name: Apply cover art state and commands
+        shell: bash
+        run: |
+          git apply <<'PATCH'
+          --- a/src/core.ts
+          +++ b/src/core.ts
+          @@ -6,6 +6,11 @@
+           export type Page = "home" | "search" | "library" | "lyrics" | "queue";
+           export type RepeatMode = "off" | "context" | "one";
+           export type SearchPhase = "idle" | "debouncing" | "loading_octave" | "loading_fallback" | "ready" | "failed";
+          +export type ImageState =
+          +  | "loaded" | "rejected" | "not_found" | "io_failed" | "connect_failed"
+          +  | "tls_failed" | "protocol_failed" | "timed_out" | "http_status"
+          +  | "cancelled" | "too_large" | "unsupported" | "decode_failed" | "registry_full"
+          +  | "alloc_failed";
+           
+           export interface Draft {
+             readonly bytes: Bytes;
+          @@ -27,6 +32,8 @@
+             readonly searchPhase: SearchPhase;
+             readonly tracks: readonly Track[];
+             readonly nowId: number;
+          +  readonly coverImage: number;
+          +  readonly coverRequestId: number;
+             readonly queue: readonly QueueItem[];
+             readonly playing: boolean;
+             readonly buffering: boolean;
+          @@ -68,6 +75,7 @@
+             | { readonly kind: "fallback_search_failed"; readonly reason: Bytes }
+             | { readonly kind: "resolve_track_done"; readonly status: number; readonly body: Bytes }
+             | { readonly kind: "resolve_track_failed"; readonly reason: Bytes }
+          +  | { readonly kind: "cover_done"; readonly id: number; readonly state: ImageState; readonly width: number; readonly height: number; readonly status: number }
+             | { readonly kind: "play_track"; readonly playTrackId: number }
+             | { readonly kind: "toggle_play" }
+             | { readonly kind: "next_track" }
+          @@ -82,7 +90,7 @@
+             | { readonly kind: "clock_tick"; readonly at: number };
+           
+           export const viewUnbound = [
+          -  "search_fire", "octave_search_done", "octave_search_failed", "fallback_search_done", "fallback_search_failed", "resolve_track_done", "resolve_track_failed", "audio_event", "clock_tick",
+          +  "search_fire", "octave_search_done", "octave_search_failed", "fallback_search_done", "fallback_search_failed", "resolve_track_done", "resolve_track_failed", "cover_done", "audio_event", "clock_tick",
+           ] as const;
+           
+           const MAX_SEARCH = 96;
+          @@ -131,6 +139,8 @@
+               searchPhase: "idle",
+               tracks: [],
+               nowId: 0,
+          +    coverImage: 0,
+          +    coverRequestId: 0,
+               queue: [],
+               playing: false,
+               buffering: false,
+          @@ -210,6 +220,8 @@
+             return {
+               ...model,
+               nowId: safeId,
+          +    coverImage: model.coverRequestId === safeId ? model.coverImage : 0,
+          +    coverRequestId: safeId,
+               queue: dequeue(model, safeId),
+               playing: true,
+               buffering: false,
+          @@ -290,20 +302,34 @@
+                 if (track !== undefined && track.fallbackPreviewUrl.length > 0) return [{ ...model, fallbackPlayback: true }, Cmd.audioPlay("player", { url: track.fallbackPreviewUrl }, { event: "audio_event" })];
+                 return [{ ...model, playing: false, loadPending: false, audioReady: false, errorText: msg.reason }, Cmd.none];
+               }
+          +    case "cover_done": {
+          +      if (msg.id !== model.coverRequestId) {
+          +        if (msg.state === "loaded" && msg.id > 0) return [model, Cmd.imageUnregister(msg.id)];
+          +        return [model, Cmd.none];
+          +      }
+          +      if (msg.state === "loaded") return [{ ...model, coverImage: msg.id }, Cmd.none];
+          +      return [{ ...model, coverImage: 0 }, Cmd.none];
+          +    }
+               case "play_track": {
+                 const raw = msg.playTrackId;
+                 if (!(raw >= 1 && raw <= 30)) return [model, Cmd.none];
+                 const id = Math.trunc(raw);
+                 const track = trackById(model, id);
+                 if (track === undefined) return [model, Cmd.none];
+          -      return [startTrack(model, id, track, false), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +      const next = startTrack(model, id, track, false);
+          +      if (track.coverUrl.length === 0 || (model.coverRequestId === id && model.coverImage === id)) return [next, Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +      if (model.coverRequestId > 0 && model.coverRequestId !== id) return [next, Cmd.batch([Cmd.imageCancel(model.coverRequestId), Cmd.imageUnregister(model.coverRequestId), Cmd.imageLoad(id, { url: track.coverUrl }, { event: "cover_done" }), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+          +      if (model.coverRequestId === id) return [next, Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +      return [next, Cmd.batch([Cmd.imageLoad(id, { url: track.coverUrl }, { event: "cover_done" }), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+               }
+               case "toggle_play": {
+                 if (model.nowId === 0) {
+                   if (model.tracks.length === 0) return [model, Cmd.none];
+                   const track = trackById(model, 1);
+                   if (track === undefined) return [model, Cmd.none];
+          -        return [startTrack(model, 1, track, false), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +        const next = startTrack(model, 1, track, false);
+          +        if (track.coverUrl.length === 0) return [next, Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +        return [next, Cmd.batch([Cmd.imageLoad(1, { url: track.coverUrl }, { event: "cover_done" }), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+                 }
+                 if (model.loadPending) return [model, Cmd.none];
+                 if (model.playing) return [{ ...model, playing: false }, Cmd.audioPause("player")];
+          @@ -319,7 +345,11 @@
+                 if (id === 0) return [{ ...model, playing: false, audioReady: false }, Cmd.audioStop("player")];
+                 const track = trackById(model, id);
+                 if (track === undefined) return [{ ...model, playing: false, audioReady: false }, Cmd.audioStop("player")];
+          -      return [startTrack(model, id, track, false), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +      const next = startTrack(model, id, track, false);
+          +      if (track.coverUrl.length === 0 || (model.coverRequestId === id && model.coverImage === id)) return [next, Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +      if (model.coverRequestId > 0 && model.coverRequestId !== id) return [next, Cmd.batch([Cmd.imageCancel(model.coverRequestId), Cmd.imageUnregister(model.coverRequestId), Cmd.imageLoad(id, { url: track.coverUrl }, { event: "cover_done" }), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+          +      if (model.coverRequestId === id) return [next, Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +      return [next, Cmd.batch([Cmd.imageLoad(id, { url: track.coverUrl }, { event: "cover_done" }), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+               }
+               case "prev_track": {
+                 if (model.positionMs > 4000) return [{ ...model, positionMs: 0 }, Cmd.audioSeek("player", 0)];
+          @@ -327,7 +357,11 @@
+                 if (id === 0) return [model, Cmd.none];
+                 const track = trackById(model, id);
+                 if (track === undefined) return [model, Cmd.none];
+          -      return [startTrack(model, id, track, false), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +      const next = startTrack(model, id, track, false);
+          +      if (track.coverUrl.length === 0 || (model.coverRequestId === id && model.coverImage === id)) return [next, Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +      if (model.coverRequestId > 0 && model.coverRequestId !== id) return [next, Cmd.batch([Cmd.imageCancel(model.coverRequestId), Cmd.imageUnregister(model.coverRequestId), Cmd.imageLoad(id, { url: track.coverUrl }, { event: "cover_done" }), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+          +      if (model.coverRequestId === id) return [next, Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +      return [next, Cmd.batch([Cmd.imageLoad(id, { url: track.coverUrl }, { event: "cover_done" }), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+               }
+               case "queue_track": {
+                 if (model.queue.length >= MAX_QUEUE) return [model, Cmd.none];
+          @@ -505,7 +539,11 @@
+                           if (id === 0) return [{ ...model, playing: false, audioReady: false, positionMs: model.durationMs }, Cmd.none];
+                           const track = trackById(model, id);
+                           if (track === undefined) return [{ ...model, playing: false }, Cmd.none];
+          -          return [startTrack(model, id, track, false), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +          const next = startTrack(model, id, track, false);
+          +          if (track.coverUrl.length === 0 || (model.coverRequestId === id && model.coverImage === id)) return [next, Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +          if (model.coverRequestId > 0 && model.coverRequestId !== id) return [next, Cmd.batch([Cmd.imageCancel(model.coverRequestId), Cmd.imageUnregister(model.coverRequestId), Cmd.imageLoad(id, { url: track.coverUrl }, { event: "cover_done" }), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+          +          if (model.coverRequestId === id) return [next, Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+          +          return [next, Cmd.batch([Cmd.imageLoad(id, { url: track.coverUrl }, { event: "cover_done" }), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+                         }
+                         case "failed":
+                         case "rejected": {
+          @@ -541,6 +579,8 @@
+           export function likedRows(model: Model): readonly TrackRow[] { return trackRows(model).filter((row) => row.liked); }
+           export function queueRows(model: Model): readonly TrackRow[] { return model.queue.map((item) => trackRows(model).find((row) => row.id === item.id)).filter((row) => row !== undefined); }
+           export function hasNow(model: Model): boolean { return model.nowId !== 0; }
+          +export function hasCover(model: Model): boolean { return model.coverImage > 0; }
+          +export function repeatActive(model: Model): boolean { return model.repeat !== "off"; }
+           export function nowTitle(model: Model): Bytes { const track = currentTrack(model); return track === undefined ? asciiBytes("Not playing") : track.title; }
+           export function nowArtist(model: Model): Bytes { const track = currentTrack(model); return track === undefined ? asciiBytes("Choose something to play") : track.artist; }
+           export function nowAlbum(model: Model): Bytes { const track = currentTrack(model); return track === undefined ? new Uint8Array(0) : track.album; }
+          PATCH
+      - name: Commit core patch
+        shell: bash
+        run: |
+          git config user.name "spotify-ci"
+          git config user.email "spotify-ci@users.noreply.github.com"
+          git add src/core.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: load Octave cover art in native player"
+          git push origin HEAD:feat/native-octave-client
