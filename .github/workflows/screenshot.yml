@@ -27,6 +27,11 @@ jobs:
         run: rm -rf .native/build .zig-cache zig-out
       - name: Build with automation
         run: npx native build --yes -Dautomation=true
+      - name: Use dark reference appearance
+        shell: bash
+        run: |
+          defaults write -g AppleInterfaceStyle Dark
+          killall cfprefsd || true
       - name: Launch and capture deterministic canvas
         shell: bash
         run: |
@@ -52,5 +57,5 @@ jobs:
           git config user.email "spotify-ci@users.noreply.github.com"
           git add docs/screenshots/home.png
           git diff --cached --quiet && exit 0
-          git commit -m "docs: capture built native app home screen"
+          git commit -m "docs: capture dark native app home screen"
           git push origin HEAD:feat/native-octave-client
