@@ -44,4 +44,4 @@ jobs:
       - run: npm audit --audit-level=high
       - run: node scripts/secret-scan.mjs
 
-# Deliberate no-op marker: this commit triggers the final pre-merge run on the completed source head.
+# Final pre-merge gate on the binding-fixed source head.
