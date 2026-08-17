@@ -14,7 +14,7 @@
     "verify": "npm run check && npm run test && npm run build"
   },
   "devDependencies": {
-    "@native-sdk/cli": "0.5.3",
+    "@native-sdk/cli": "0.5.4",
     "tsx": "4.23.1",
     "typescript": "5.9.2"
   }
