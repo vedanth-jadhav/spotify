@@ -1,72 +1,44 @@
 const ORIGIN = "https://music.octavestreaming.com";
-
-function absolute(url) {
-  return new URL(url, ORIGIN).href;
-}
+const TIMEOUT_MS = 8000;
 
 async function get(url) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: { "user-agent": "OctaveNativeProbe/1.0" },
-    });
-    console.log(`FETCH ${response.status} ${response.url} ${response.headers.get("content-type") ?? ""}`);
-    if (!response.ok) return "";
-    return await response.text();
-  } finally {
-    clearTimeout(timer);
+    const r = await fetch(url, { signal: controller.signal, redirect: "follow", headers: { "user-agent": "OctaveNativeProbe/2.0" } });
+    console.log(`FETCH ${r.status} ${r.url}`);
+    return r.ok ? await r.text() : "";
+  } catch (error) {
+    console.log(`FETCH_ERROR ${url} ${error?.name ?? "Error"}`);
+    return "";
+  } finally { clearTimeout(timer); }
+}
+
+function absolute(url) { return new URL(url, ORIGIN).href; }
+function collect(text, source, out) {
+  const normalized = text.replaceAll("\\/", "/");
+  for (const m of normalized.matchAll(/https?:\/\/[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]+/g)) {
+    const v = m[0];
+    if (/octave|deezer|dzcdn|lyrics|stream|media|api/i.test(v)) out.add(`URL ${v} <- ${source}`);
+  }
+  for (const m of normalized.matchAll(/["'`]((?:\/api\/|\/)(?:search|track|playlist|artist|album|radio|podcast|lyrics|stream|download|media|gateway|proxy)[^"'`\\ ]{0,160})["'`]/gi)) {
+    out.add(`PATH ${m[1]} <- ${source}`);
+  }
+  for (const m of normalized.matchAll(/(?:fetch|axios\.(?:get|post)|new URL)\s*\(\s*["'`]([^"'`]{1,220})["'`]/gi)) {
+    out.add(`CALL ${m[1]} <- ${source}`);
   }
 }
 
 const html = await get(`${ORIGIN}/`);
 if (!html) process.exit(1);
-
-const scripts = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)]
-  .map((match) => absolute(match[1]))
-  .filter((url, index, all) => all.indexOf(url) === index);
-
-console.log(`SCRIPTS ${scripts.length}`);
-for (const script of scripts) console.log(`SCRIPT ${script}`);
-
-const needles = [
-  "/api/", "fetch(", "deezer", "stream", "lyrics", "search", "track", "playlist",
-  "artist", "album", "radio", "podcast", "download", "gateway", "proxy", "media",
-];
-const candidates = new Set();
-
-function collect(text, source) {
-  for (const match of text.matchAll(/https?:\\?\/[\\/]?[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]+/g)) {
-    const value = match[0].replaceAll("\\/", "/");
-    if (/deezer|dzcdn|octave|stream|lyrics|api/i.test(value)) candidates.add(`URL ${value} <- ${source}`);
-  }
-  for (const match of text.matchAll(/["'`]((?:\\.|[^"'`]){1,180})["'`]/g)) {
-    const raw = match[1].replaceAll("\\/", "/");
-    if (/^\/(?:api|search|track|playlist|artist|album|radio|podcast|lyrics|stream|download|media|gateway|proxy)\b/i.test(raw)) {
-      candidates.add(`PATH ${raw} <- ${source}`);
-    }
-  }
-  const lower = text.toLowerCase();
-  for (const needle of needles) {
-    let at = 0;
-    while ((at = lower.indexOf(needle.toLowerCase(), at)) !== -1) {
-      const start = Math.max(0, at - 180);
-      const end = Math.min(text.length, at + needle.length + 260);
-      const context = text.slice(start, end).replace(/\s+/g, " ");
-      candidates.add(`CTX ${needle} ${context} <- ${source}`);
-      at += needle.length;
-      if (candidates.size > 1200) break;
-    }
-  }
-}
-
-collect(html, "html");
-for (const script of scripts) {
-  const js = await get(script);
-  if (js) collect(js, script.split("/").pop() ?? script);
-}
-
-console.log(`CANDIDATES ${candidates.size}`);
-for (const item of [...candidates].sort()) console.log(item);
+const scriptUrls = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)]
+  .map(m => absolute(m[1]))
+  .filter((v, i, a) => a.indexOf(v) === i)
+  .slice(0, 40);
+console.log(`SCRIPTS ${scriptUrls.length}`);
+const texts = await Promise.all(scriptUrls.map(async url => [url, await get(url)]));
+const found = new Set();
+collect(html, "html", found);
+for (const [url, text] of texts) if (text) collect(text, url.split("/").pop() ?? url, found);
+console.log(`ROUTES ${found.size}`);
+for (const item of [...found].sort()) console.log(item);
