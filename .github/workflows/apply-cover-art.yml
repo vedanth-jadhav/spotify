@@ -1,4 +1,4 @@
-name: Stage visual bindings
+name: Apply parity fix
 
 on:
   push:
@@ -15,27 +15,23 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feat/native-octave-client
-      - name: Add visual bindings
+      - name: Fix native context menu attributes
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('src/core.ts')
+          p = Path('src/app.native')
           s = p.read_text()
-          anchor = 'export function hasNow(model: Model): boolean { return model.nowId !== 0; }\n'
-          addition = anchor + 'export function hasCover(_model: Model): boolean { return false; }\nexport function coverImage(_model: Model): number { return 0; }\nexport function repeatActive(model: Model): boolean { return model.repeat !== "off"; }\n'
-          if 'export function hasCover(' not in s:
-              if anchor not in s:
-                  raise SystemExit('hasNow binding anchor not found')
-              s = s.replace(anchor, addition, 1)
+          s = s.replace('<menu-item icon="plus" on-press=', '<menu-item on-press=')
+          s = s.replace('<menu-item icon="save" on-press=', '<menu-item on-press=')
           p.write_text(s)
           PY
-      - name: Commit bindings
+      - name: Commit parity fix
         shell: bash
         run: |
           git config user.name "spotify-ci"
           git config user.email "spotify-ci@users.noreply.github.com"
-          git add src/core.ts
+          git add src/app.native
           git diff --cached --quiet && exit 0
-          git commit -m "fix: expose visual shell bindings"
+          git commit -m "fix: use supported native context menu schema"
           git push origin HEAD:feat/native-octave-client
