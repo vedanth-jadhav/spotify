@@ -15,12 +15,93 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feat/native-octave-client
-      - name: Export model-reachable named records
+      - name: Tighten integer state domains for external compiler
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('src/core.ts')
-          s = p.read_text().replace('interface Draft {', 'export interface Draft {')
+          s = p.read_text()
+
+          old = '''  const compStart = next.composition === null ? -1 : next.composition.start;
+          const compEnd = next.composition === null ? -1 : next.composition.end;
+          return { bytes: next.text, anchor: next.selection.anchor, focus: next.selection.focus, compStart: compStart, compEnd: compEnd };'''
+          new = '''  const anchorRaw = next.selection.anchor;
+          const focusRaw = next.selection.focus;
+          const compStartRaw = next.composition === null ? -1 : next.composition.start;
+          const compEndRaw = next.composition === null ? -1 : next.composition.end;
+          const anchor = anchorRaw >= 0 && anchorRaw <= MAX_SEARCH ? Math.trunc(anchorRaw) : 0;
+          const focus = focusRaw >= 0 && focusRaw <= MAX_SEARCH ? Math.trunc(focusRaw) : anchor;
+          const compStart = compStartRaw >= -1 && compStartRaw <= MAX_SEARCH ? Math.trunc(compStartRaw) : -1;
+          const compEnd = compEndRaw >= -1 && compEndRaw <= MAX_SEARCH ? Math.trunc(compEndRaw) : -1;
+          return { bytes: next.text, anchor: anchor, focus: focus, compStart: compStart, compEnd: compEnd };'''
+          if old not in s: raise SystemExit('editDraft block not found')
+          s = s.replace(old, new)
+
+          old = '''function navigate(model: Model, page: Page): Model {
+            if (model.page === page) return model;
+            const kept = model.history.slice(0, model.historyIndex + 1);
+            return { ...model, page: page, history: [...kept, page], historyIndex: kept.length };
+          }'''
+          new = '''function navigate(model: Model, page: Page): Model {
+            if (model.page === page) return model;
+            const rawIndex = model.historyIndex;
+            const safeIndex = rawIndex >= 0 && rawIndex <= 99 ? Math.trunc(rawIndex) : 0;
+            const kept = model.history.slice(0, safeIndex + 1);
+            const history = kept.length >= 99 ? [...kept.slice(1), page] : [...kept, page];
+            const nextRaw = history.length - 1;
+            const nextIndex = nextRaw >= 0 && nextRaw <= 99 ? Math.trunc(nextRaw) : 0;
+            return { ...model, page: page, history: history, historyIndex: nextIndex };
+          }'''
+          if old not in s: raise SystemExit('navigate block not found')
+          s = s.replace(old, new)
+
+          old = '''    case "go_back": {
+                if (model.historyIndex <= 0) return [model, Cmd.none];
+                const index = model.historyIndex - 1;
+                return [{ ...model, historyIndex: index, page: model.history[index] }, Cmd.none];
+              }
+              case "go_forward": {
+                if (model.historyIndex + 1 >= model.history.length) return [model, Cmd.none];
+                const index = model.historyIndex + 1;
+                return [{ ...model, historyIndex: index, page: model.history[index] }, Cmd.none];
+              }'''
+          new = '''    case "go_back": {
+                const rawIndex = model.historyIndex;
+                if (!(rawIndex > 0 && rawIndex <= 99)) return [model, Cmd.none];
+                const index = Math.trunc(rawIndex) - 1;
+                return [{ ...model, historyIndex: index, page: model.history[index] }, Cmd.none];
+              }
+              case "go_forward": {
+                const rawIndex = model.historyIndex;
+                if (!(rawIndex >= 0 && rawIndex < 99)) return [model, Cmd.none];
+                const current = Math.trunc(rawIndex);
+                if (current + 1 >= model.history.length) return [model, Cmd.none];
+                const index = current + 1;
+                return [{ ...model, historyIndex: index, page: model.history[index] }, Cmd.none];
+              }'''
+          if old not in s: raise SystemExit('history cases not found')
+          s = s.replace(old, new)
+
+          old = '''function startTrack(model: Model, id: number, track: Track, fallback: boolean): Model {
+            const secondsRaw = track.durationSec;
+            const seconds = secondsRaw >= 0 && secondsRaw <= 86400 ? Math.trunc(secondsRaw) : 0;
+            return {
+              ...model,
+              nowId: id,
+              queue: dequeue(model, id),'''
+          new = '''function startTrack(model: Model, id: number, track: Track, fallback: boolean): Model {
+            const safeId = id >= 1 && id <= 30 ? Math.trunc(id) : 0;
+            if (safeId === 0) return model;
+            const secondsRaw = track.durationSec;
+            const seconds = secondsRaw >= 0 && secondsRaw <= 86400 ? Math.trunc(secondsRaw) : 0;
+            return {
+              ...model,
+              nowId: safeId,
+              queue: dequeue(model, safeId),'''
+          if old not in s: raise SystemExit('startTrack block not found')
+          s = s.replace(old, new)
+
+          s = s.replace('const id = raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;', 'const id = raw >= 1 && raw <= 30 ? Math.trunc(raw) : 0;')
           p.write_text(s)
           PY
       - name: Commit patch
@@ -29,5 +110,5 @@ jobs:
           git config user.email "spotify-ci@users.noreply.github.com"
           git add src/core.ts
           git diff --cached --quiet && exit 0
-          git commit -m "fix: export native model draft record"
+          git commit -m "fix: bound native integer state domains"
           git push origin HEAD:feat/native-octave-client
