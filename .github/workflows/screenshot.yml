@@ -24,7 +24,7 @@ jobs:
       - name: Validate native sources
         run: npx native check --yes
       - name: Build with automation
-        run: npx native build --yes -- -Dautomation=true
+        run: npx native build --yes -Dautomation=true
       - name: Launch and capture deterministic canvas
         shell: bash
         run: |
