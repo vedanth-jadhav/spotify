@@ -662,7 +662,8 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return [{ ...model, queue: [...model.queue, { id: 1, track: track }] }, Cmd.none];
     }
     case "create_playlist": {
-      const next: Model = { ...navigate(model, "playlist"), playlistCreated: true };
+      const navigated = navigate(model, "playlist");
+      const next: Model = { ...navigated, playlistCreated: true };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
     case "add_to_playlist": {
