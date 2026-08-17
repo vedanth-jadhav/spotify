@@ -3,15 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.15.0" },
+  "engines": {
+    "node": ">=22.15.0"
+  },
   "scripts": {
     "check": "native check",
-    "test": "node --test --experimental-strip-types tests/*.test.ts && native test",
+    "test:unit": "tsx --test tests/*.test.ts",
+    "test": "npm run test:unit && native test",
     "build": "native build",
     "verify": "npm run check && npm run test && npm run build"
   },
   "devDependencies": {
-    "@native-sdk/cli": "latest",
-    "typescript": "^5.9.2"
+    "@native-sdk/cli": "0.5.3",
+    "tsx": "4.23.1",
+    "typescript": "5.9.2"
   }
 }

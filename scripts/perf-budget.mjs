@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, lstat } from "node:fs/promises";
 import { join } from "node:path";
 
 const roots = ["src", "app.zon"];
@@ -6,7 +6,8 @@ let sourceBytes = 0;
 let webviewMentions = 0;
 
 async function walk(path) {
-  const info = await stat(path);
+  const info = await lstat(path);
+  if (info.isSymbolicLink()) return;
   if (info.isDirectory()) {
     for (const name of await readdir(path)) await walk(join(path, name));
     return;

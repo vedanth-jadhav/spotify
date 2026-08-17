@@ -61,7 +61,7 @@
         <scroll grow="1" label="Home">
           <column padding="24" gap="20">
             <row gap="8"><badge variant="secondary">All</badge><badge variant="secondary">Music</badge><badge variant="secondary">Podcasts</badge></row>
-            <text><span scale="1.8">Good afternoon</span></text>
+            <text><span scale="1.8">Welcome back</span></text>
             <grid columns="2" gap="8">
               <list-item height="64" background="surface_pressed" radius="sm" padding="10" gap="10" cross="center" icon="check-circle" on-press="go_library" label="Open Liked Songs"><text>Liked Songs</text></list-item>
               <list-item height="64" background="surface_pressed" radius="sm" padding="10" gap="10" cross="center" icon="music" on-press="search_trending" label="Play trending music"><text>Trending now</text></list-item>
@@ -141,7 +141,7 @@
               <column gap="8"><text size="sm">Playlist</text><text><span scale="2.15">Liked Songs</span></text><text foreground="text_muted">Your saved tracks</text></column>
             </row>
             <row gap="10" cross="center"><button size="icon" variant="primary" icon="play" on-press="play_liked" label="Play Liked Songs"></button><button size="sm" variant="ghost" on-press="create_playlist" label="Create another playlist">Create playlist</button></row>
-            <list role="list" label="Liked tracks"><for each="likedRows" as="t" key="id"><list-item key="{t.id}" height="58" padding="8" gap="12" cross="center" icon="music" on-press="play_liked_track:{t.id}" label="{t.title}"><column grow="1"><text>{t.title}</text><text size="sm" foreground="text_muted">{t.artist}</text></column><text width="180" size="sm" foreground="text_muted">{t.album}</text><text width="44" size="sm">{t.duration}</text><context-menu><menu-item on-press="remove_liked_track:{t.id}">Remove from Liked Songs</menu-item></context-menu></list-item></for></list>
+            <list role="list" label="Liked tracks"><for each="likedRows" as="t" key="id"><list-item role="listitem" key="{t.id}" height="58" padding="8" gap="12" cross="center" icon="music" on-press="play_liked_track:{t.id}" label="{t.title}"><column grow="1"><text>{t.title}</text><text size="sm" foreground="text_muted">{t.artist}</text></column><text width="180" size="sm" foreground="text_muted">{t.album}</text><text width="44" size="sm">{t.duration}</text><context-menu><menu-item on-press="remove_liked_track:{t.id}">Remove from Liked Songs</menu-item></context-menu></list-item></for></list>
           </column>
         </scroll>
       </if>
@@ -151,7 +151,7 @@
           <column padding="24" gap="18">
             <row gap="20" cross="end"><panel width="188" height="188" radius="md" background="surface_pressed"><row grow="1" main="center" cross="center"><icon name="music" width="72" height="72"></icon></row></panel><column gap="8"><text size="sm">Playlist</text><text><span scale="2.15">My Playlist</span></text><text foreground="text_muted">Songs you saved to this playlist</text></column></row>
             <row gap="10"><button size="icon" variant="primary" icon="play" on-press="play_playlist" label="Play playlist"></button><button size="sm" variant="ghost" on-press="clear_playlist" label="Clear playlist">Clear</button><button size="sm" variant="ghost" on-press="go_search" label="Add songs">Add songs</button></row>
-            <list role="list" label="Playlist tracks"><for each="playlistRows" as="t" key="id"><list-item key="{t.id}" height="58" padding="8" gap="12" cross="center" icon="music" on-press="play_playlist_track:{t.id}" label="{t.title}"><column grow="1"><text>{t.title}</text><text size="sm" foreground="text_muted">{t.artist}</text></column><text width="180" size="sm" foreground="text_muted">{t.album}</text><text width="44" size="sm">{t.duration}</text><context-menu><menu-item on-press="remove_playlist_track:{t.id}">Remove from playlist</menu-item></context-menu></list-item></for></list>
+            <list role="list" label="Playlist tracks"><for each="playlistRows" as="t" key="id"><list-item role="listitem" key="{t.id}" height="58" padding="8" gap="12" cross="center" icon="music" on-press="play_playlist_track:{t.id}" label="{t.title}"><column grow="1"><text>{t.title}</text><text size="sm" foreground="text_muted">{t.artist}</text></column><text width="180" size="sm" foreground="text_muted">{t.album}</text><text width="44" size="sm">{t.duration}</text><context-menu><menu-item on-press="remove_playlist_track:{t.id}">Remove from playlist</menu-item></context-menu></list-item></for></list>
           </column>
         </scroll>
       </if>
@@ -162,7 +162,7 @@
             <row cross="center"><text><span scale="1.6">Queue</span></text><spacer grow="1" /><button size="sm" variant="ghost" on-press="clear_queue" label="Clear queue">Clear</button></row>
             <row gap="8"><button size="sm" variant="secondary" icon="shuffle" selected="{shuffle}" on-press="toggle_shuffle" label="Toggle shuffle">Shuffle</button><button size="sm" variant="secondary" icon="repeat" selected="{repeatActive}" on-press="cycle_repeat" label="Cycle repeat">{repeatLabel}</button></row>
             <text foreground="text_muted">Next in queue</text>
-            <list label="Queued tracks"><for each="queueRows" as="t" key="id"><list-item key="{t.id}" height="58" padding="8" gap="12" cross="center" icon="music" on-press="play_queue_track:{t.id}" label="{t.title}"><column grow="1"><text>{t.title}</text><text size="sm" foreground="text_muted">{t.artist}</text></column><text size="sm">{t.duration}</text><context-menu><menu-item on-press="remove_queue_track:{t.id}">Remove from queue</menu-item></context-menu></list-item></for></list>
+            <list role="list" label="Queued tracks"><for each="queueRows" as="t" key="id"><list-item role="listitem" key="{t.id}" height="58" padding="8" gap="12" cross="center" icon="music" on-press="play_queue_track:{t.id}" label="{t.title}"><column grow="1"><text>{t.title}</text><text size="sm" foreground="text_muted">{t.artist}</text></column><text size="sm">{t.duration}</text><context-menu><menu-item on-press="remove_queue_track:{t.id}">Remove from queue</menu-item></context-menu></list-item></for></list>
           </column>
         </scroll>
       </if>

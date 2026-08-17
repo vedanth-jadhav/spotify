@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, lstat } from "node:fs/promises";
 import { join } from "node:path";
 
 const ignored = new Set([".git", "node_modules", ".native", "zig-cache", "zig-out"]);
@@ -6,7 +6,8 @@ const pattern = /(api[_-]?key|secret|token)\s*[:=]\s*["'][A-Za-z0-9_-]{20,}["']/
 let findings = 0;
 
 async function walk(path) {
-  const info = await stat(path);
+  const info = await lstat(path);
+  if (info.isSymbolicLink()) return;
   if (info.isDirectory()) {
     for (const name of await readdir(path)) if (!ignored.has(name)) await walk(join(path, name));
     return;

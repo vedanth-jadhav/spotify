@@ -54,6 +54,7 @@ export interface Model {
   readonly durationMs: number;
   readonly volumePermille: number;
   readonly shuffle: boolean;
+  readonly shuffleSeed: number;
   readonly repeat: RepeatMode;
   readonly errorText: Bytes;
 }
@@ -226,6 +227,7 @@ export function freshModel(): Model {
     durationMs: 0,
     volumePermille: 760,
     shuffle: false,
+    shuffleSeed: 1,
     repeat: "off",
     errorText: new Uint8Array(0),
   };
@@ -273,20 +275,36 @@ function isLiked(model: Model, id: number): boolean {
   return track !== undefined && trackIn(model.likedTracks, track);
 }
 
+function greatestCommonDivisor(a: number, b: number): number {
+  let x = a >= 0 && a <= 30 ? Math.trunc(a) : 0;
+  let y = b >= 0 && b <= 30 ? Math.trunc(b) : 0;
+  while (y > 0) {
+    const remainder = x % y;
+    x = y;
+    y = remainder;
+  }
+  return x;
+}
+
 function nextId(model: Model): number {
-  if (model.contextTracks.length === 0) return 0;
+  const countRaw = model.contextTracks.length;
+  const count = countRaw >= 0 && countRaw <= 30 ? Math.trunc(countRaw) : 0;
+  if (count === 0) return 0;
   if (model.repeat === "one" && model.nowId > 0) return model.nowId;
   if (model.nowId <= 0) return 1;
-  if (model.shuffle && model.contextTracks.length > 1) {
-    let next = model.nowId + 2;
-    while (next > model.contextTracks.length) next -= model.contextTracks.length;
-    if (next === model.nowId) {
-      next += 1;
-      if (next > model.contextTracks.length) next = 1;
+  if (model.shuffle && count > 1) {
+    let step = model.shuffleSeed >= 1 && model.shuffleSeed <= 29 ? Math.trunc(model.shuffleSeed) : 1;
+    while (step >= count) step -= count;
+    if (step <= 0) step = 1;
+    while (greatestCommonDivisor(step, count) !== 1) {
+      step += 1;
+      if (step >= count) step = 1;
     }
+    let next = model.nowId + step;
+    while (next > count) next -= count;
     return next;
   }
-  if (model.nowId < model.contextTracks.length) return model.nowId + 1;
+  if (model.nowId < count) return model.nowId + 1;
   return model.repeat === "context" || model.autoplay ? 1 : 0;
 }
 
@@ -552,7 +570,8 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
         const item = model.queue[0];
         if (item !== undefined) {
           const track = item.track;
-          const next = startTrack(model, 1, track, [], false);
+          const contextId = model.nowId >= 1 && model.nowId <= 30 ? Math.trunc(model.nowId) : 1;
+          const next = startTrack(model, contextId, track, model.contextTracks, false);
           if (track.coverUrl.length === 0) {
             if (model.coverImage === 1) return [next, Cmd.batch([Cmd.imageUnregister(1), Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
             if (model.coverRequestId === 1) return [next, Cmd.batch([Cmd.imageCancel(1), Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
@@ -603,157 +622,11 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
     case "queue_track": {
       if (model.queue.length >= MAX_QUEUE) return [model, Cmd.none];
       const raw = msg.queueTrackId;
-      if (raw === 1) {
-        const track = trackById(model, 1);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 1, track: track }] }, Cmd.none];
-      }
-      if (raw === 2) {
-        const track = trackById(model, 2);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 2, track: track }] }, Cmd.none];
-      }
-      if (raw === 3) {
-        const track = trackById(model, 3);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 3, track: track }] }, Cmd.none];
-      }
-      if (raw === 4) {
-        const track = trackById(model, 4);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 4, track: track }] }, Cmd.none];
-      }
-      if (raw === 5) {
-        const track = trackById(model, 5);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 5, track: track }] }, Cmd.none];
-      }
-      if (raw === 6) {
-        const track = trackById(model, 6);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 6, track: track }] }, Cmd.none];
-      }
-      if (raw === 7) {
-        const track = trackById(model, 7);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 7, track: track }] }, Cmd.none];
-      }
-      if (raw === 8) {
-        const track = trackById(model, 8);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 8, track: track }] }, Cmd.none];
-      }
-      if (raw === 9) {
-        const track = trackById(model, 9);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 9, track: track }] }, Cmd.none];
-      }
-      if (raw === 10) {
-        const track = trackById(model, 10);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 10, track: track }] }, Cmd.none];
-      }
-      if (raw === 11) {
-        const track = trackById(model, 11);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 11, track: track }] }, Cmd.none];
-      }
-      if (raw === 12) {
-        const track = trackById(model, 12);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 12, track: track }] }, Cmd.none];
-      }
-      if (raw === 13) {
-        const track = trackById(model, 13);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 13, track: track }] }, Cmd.none];
-      }
-      if (raw === 14) {
-        const track = trackById(model, 14);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 14, track: track }] }, Cmd.none];
-      }
-      if (raw === 15) {
-        const track = trackById(model, 15);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 15, track: track }] }, Cmd.none];
-      }
-      if (raw === 16) {
-        const track = trackById(model, 16);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 16, track: track }] }, Cmd.none];
-      }
-      if (raw === 17) {
-        const track = trackById(model, 17);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 17, track: track }] }, Cmd.none];
-      }
-      if (raw === 18) {
-        const track = trackById(model, 18);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 18, track: track }] }, Cmd.none];
-      }
-      if (raw === 19) {
-        const track = trackById(model, 19);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 19, track: track }] }, Cmd.none];
-      }
-      if (raw === 20) {
-        const track = trackById(model, 20);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 20, track: track }] }, Cmd.none];
-      }
-      if (raw === 21) {
-        const track = trackById(model, 21);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 21, track: track }] }, Cmd.none];
-      }
-      if (raw === 22) {
-        const track = trackById(model, 22);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 22, track: track }] }, Cmd.none];
-      }
-      if (raw === 23) {
-        const track = trackById(model, 23);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 23, track: track }] }, Cmd.none];
-      }
-      if (raw === 24) {
-        const track = trackById(model, 24);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 24, track: track }] }, Cmd.none];
-      }
-      if (raw === 25) {
-        const track = trackById(model, 25);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 25, track: track }] }, Cmd.none];
-      }
-      if (raw === 26) {
-        const track = trackById(model, 26);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 26, track: track }] }, Cmd.none];
-      }
-      if (raw === 27) {
-        const track = trackById(model, 27);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 27, track: track }] }, Cmd.none];
-      }
-      if (raw === 28) {
-        const track = trackById(model, 28);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 28, track: track }] }, Cmd.none];
-      }
-      if (raw === 29) {
-        const track = trackById(model, 29);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 29, track: track }] }, Cmd.none];
-      }
-      if (raw === 30) {
-        const track = trackById(model, 30);
-        if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
-        return [{ ...model, queue: [...model.queue, { id: 30, track: track }] }, Cmd.none];
-      }
-      return [model, Cmd.none];
+      if (!(raw >= 1 && raw <= 30)) return [model, Cmd.none];
+      const id = Math.trunc(raw);
+      const track = trackById(model, id);
+      if (track === undefined || model.queue.find((item) => sameTrack(item.track, track)) !== undefined) return [model, Cmd.none];
+      return [{ ...model, queue: [...model.queue, { id: id, track: track }] }, Cmd.none];
     }
     case "play_queue_track": {
       const raw = msg.queuePlayId;
@@ -763,7 +636,8 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       if (item === undefined) return [model, Cmd.none];
       const track = item.track;
       const base = { ...model, queue: model.queue.slice(index + 1) };
-      const next = startTrack(base, 1, track, [], false);
+      const contextId = model.nowId >= 1 && model.nowId <= 30 ? Math.trunc(model.nowId) : 1;
+      const next = startTrack(base, contextId, track, model.contextTracks, false);
       if (track.coverUrl.length === 0) {
         if (model.coverImage === 1) return [next, Cmd.batch([Cmd.imageUnregister(1), Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
         if (model.coverRequestId === 1) return [next, Cmd.batch([Cmd.imageCancel(1), Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
@@ -851,7 +725,10 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       const next = { ...model, likedTracks: exists ? model.likedTracks.filter((item) => !sameTrack(item, track)) : [...model.likedTracks, track] };
       return [next, Cmd.writeFile(asciiBytes("spotify-state.bin"), encodeState(persisted(next)), { key: "state-save", ok: "state_saved", err: "state_save_failed" })];
     }
-    case "toggle_shuffle": return [{ ...model, shuffle: !model.shuffle }, Cmd.none];
+    case "toggle_shuffle": {
+      const nextSeed = model.shuffle ? model.shuffleSeed : model.shuffleSeed >= 29 ? 1 : model.shuffleSeed + 1;
+      return [{ ...model, shuffle: !model.shuffle, shuffleSeed: nextSeed }, Cmd.none];
+    }
     case "cycle_repeat": return [{ ...model, repeat: model.repeat === "off" ? "context" : model.repeat === "context" ? "one" : "off" }, Cmd.none];
     case "toggle_now_playing": {
       const next = { ...model, showNowPlaying: !model.showNowPlaying };
@@ -915,7 +792,8 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
           const item = model.queue[0];
           if (item !== undefined) {
             const track = item.track;
-            const next = startTrack(model, 1, track, [], false);
+            const contextId = model.nowId >= 1 && model.nowId <= 30 ? Math.trunc(model.nowId) : 1;
+            const next = startTrack(model, contextId, track, model.contextTracks, false);
             if (track.coverUrl.length === 0) {
               if (model.coverImage === 1) return [next, Cmd.batch([Cmd.imageUnregister(1), Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
               if (model.coverRequestId === 1) return [next, Cmd.batch([Cmd.imageCancel(1), Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];

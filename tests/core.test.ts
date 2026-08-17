@@ -138,3 +138,54 @@ test("empty player actions do not fabricate playback", () => {
   assert.equal(model.playing, false);
   assert.equal(model.nowId, 0);
 });
+
+
+function modelWithFourTracks() {
+  const results = [1, 2, 3, 4].map((id) => ({
+    id: String(1000 + id), title: `Track ${id}`, artist: { name: "Artist" },
+    album: { title: "Album", cover_medium: "" }, duration: 200 + id,
+    previewUrl: `https://cdnt-preview.dzcdn.net/${id}.mp3`,
+  }));
+  let model = freshModel();
+  [model] = update(model, { kind: "octave_search_done", status: 200, body: b(JSON.stringify({ results })) });
+  return model;
+}
+
+test("shuffle visits every track in an even-length context before repeating", () => {
+  let model = modelWithFourTracks();
+  [model] = update(model, { kind: "play_track", playTrackId: 1 });
+  [model] = update(model, { kind: "toggle_shuffle" });
+  const visited = new Set([model.nowId]);
+  for (let i = 0; i < 3; i += 1) {
+    [model] = update(model, { kind: "next_track" });
+    visited.add(model.nowId);
+  }
+  assert.equal(visited.size, 4);
+});
+
+test("completed playback advances within the original context", () => {
+  let model = modelWithFourTracks();
+  [model] = update(model, { kind: "play_track", playTrackId: 1 });
+  [model] = update(model, { kind: "audio_event", state: "completed", positionMs: 0, durationMs: 201000, playing: false, buffering: false, bands: new Uint8Array(0) });
+  assert.equal(model.nowId, 2);
+  assert.equal(new TextDecoder().decode(model.nowTrack.title), "Track 2");
+});
+
+test("failed playback selects the preview fallback exactly once", () => {
+  let model = modelWithTrack();
+  [model] = update(model, { kind: "play_track", playTrackId: 1 });
+  [model] = update(model, { kind: "audio_event", state: "failed", positionMs: 0, durationMs: 230000, playing: false, buffering: false, bands: new Uint8Array(0) });
+  assert.equal(model.fallbackPlayback, true);
+  assert.equal(model.playing, true);
+});
+
+test("queued playback preserves the original context for continuation", () => {
+  let model = modelWithFourTracks();
+  [model] = update(model, { kind: "play_track", playTrackId: 1 });
+  [model] = update(model, { kind: "queue_track", queueTrackId: 4 });
+  [model] = update(model, { kind: "next_track" });
+  assert.equal(new TextDecoder().decode(model.nowTrack.title), "Track 4");
+  assert.equal(model.contextTracks.length, 4);
+  [model] = update(model, { kind: "audio_event", state: "completed", positionMs: 0, durationMs: 204000, playing: false, buffering: false, bands: new Uint8Array(0) });
+  assert.equal(new TextDecoder().decode(model.nowTrack.title), "Track 2");
+});

@@ -155,6 +155,17 @@ function jsonStringAfter(bytes: Bytes, key: Bytes, from: number): Bytes {
       else if (escaped === 0x6e) out[size] = 0x0a;
       else if (escaped === 0x72) out[size] = 0x0d;
       else if (escaped === 0x74) out[size] = 0x09;
+      else if (escaped === 0x75 && i + 5 < bytes.length) {
+        const h0 = bytes[i + 2]; const h1 = bytes[i + 3]; const h2 = bytes[i + 4]; const h3 = bytes[i + 5];
+        const validHex = (h0 >= 0x30 && h0 <= 0x39 || h0 >= 0x41 && h0 <= 0x46 || h0 >= 0x61 && h0 <= 0x66)
+          && (h1 >= 0x30 && h1 <= 0x39 || h1 >= 0x41 && h1 <= 0x46 || h1 >= 0x61 && h1 <= 0x66)
+          && (h2 >= 0x30 && h2 <= 0x39 || h2 >= 0x41 && h2 <= 0x46 || h2 >= 0x61 && h2 <= 0x66)
+          && (h3 >= 0x30 && h3 <= 0x39 || h3 >= 0x41 && h3 <= 0x46 || h3 >= 0x61 && h3 <= 0x66);
+        out[size] = 0x3f;
+        size += 1;
+        i += validHex ? 6 : 2;
+        continue;
+      }
       else out[size] = 0x3f;
       size += 1;
       i += 2;
@@ -209,7 +220,9 @@ export function parseOctaveSearch(body: Bytes): readonly Track[] {
     const durationAt = findFrom(body, durationKey, albumAt);
     const previewAt = findFrom(body, previewKey, durationAt);
     if (titleAt < 0 || artistAt < 0 || albumAt < 0 || durationAt < 0 || previewAt < 0) break;
-    const remoteId = jsonStringAfter(body, idKey, idAt);
+    const idValueAt = idAt + idKey.length;
+    const numericId = unsignedBytesAt(body, idValueAt);
+    const remoteId = numericId.length > 0 ? numericId : jsonStringAfter(body, idKey, idAt);
     const title = jsonStringAfter(body, titleKey, titleAt);
     const artist = jsonStringAfter(body, nameKey, artistAt);
     const album = jsonStringAfter(body, titleKey, albumAt);

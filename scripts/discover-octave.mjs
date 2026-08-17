@@ -2,20 +2,38 @@ const ORIGIN = "https://music.octavestreaming.com";
 const API = "https://api.octavestreaming.com/api";
 const TIMEOUT_MS = 8000;
 
-async function get(url) {
+const ALLOWED_ORIGINS = new Set([ORIGIN, "https://api.octavestreaming.com"]);
+
+function allowedUrl(value, base = ORIGIN) {
+  const parsed = new URL(value, base);
+  if (parsed.protocol !== "https:" || !ALLOWED_ORIGINS.has(parsed.origin)) throw new Error(`unexpected origin: ${parsed.origin}`);
+  return parsed.href;
+}
+
+async function get(input) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const r = await fetch(url, { signal: controller.signal, redirect: "follow", headers: { "user-agent": "OctaveNativeProbe/4.0", accept: "application/json,text/plain,*/*" } });
-    console.log(`FETCH ${r.status} ${r.url}`);
-    return { status: r.status, body: await r.text(), type: r.headers.get("content-type") ?? "" };
+    let url = allowedUrl(input);
+    for (let redirects = 0; redirects <= 3; redirects += 1) {
+      const r = await fetch(url, { signal: controller.signal, redirect: "manual", headers: { "user-agent": "OctaveNativeProbe/4.0", accept: "application/json,text/plain,*/*" } });
+      if (r.status >= 300 && r.status < 400) {
+        const location = r.headers.get("location");
+        if (!location || redirects === 3) throw new Error("unexpected redirect");
+        url = allowedUrl(location, url);
+        continue;
+      }
+      console.log(`FETCH ${r.status} ${url}`);
+      return { status: r.status, body: await r.text(), type: r.headers.get("content-type") ?? "" };
+    }
+    return { status: 0, body: "", type: "" };
   } catch (error) {
-    console.log(`FETCH_ERROR ${url} ${error?.name ?? "Error"}`);
+    console.log(`FETCH_ERROR ${input} ${error?.name ?? "Error"}`);
     return { status: 0, body: "", type: "" };
   } finally { clearTimeout(timer); }
 }
 
-function absolute(url) { return new URL(url, ORIGIN).href; }
+function absolute(url) { return allowedUrl(url); }
 const home = await get(`${ORIGIN}/`);
 if (!home.body) process.exit(1);
 const scriptUrls = [...home.body.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)]

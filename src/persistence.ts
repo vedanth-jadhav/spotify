@@ -130,9 +130,16 @@ export function decodeState(bytes: Bytes): PersistedState | undefined {
   if (bytes.length < MAGIC.length + 6 || !sameAt(bytes, 0, MAGIC)) return undefined;
   let at = MAGIC.length;
   const qualityByte = bytes[at];
-  const autoplay = bytes[at + 1] === 1;
-  const showNowPlaying = bytes[at + 2] === 1;
-  const playlistCreated = bytes[at + 3] === 1;
+  const autoplayByte = bytes[at + 1];
+  const showNowPlayingByte = bytes[at + 2];
+  const playlistCreatedByte = bytes[at + 3];
+  if ((qualityByte !== 0 && qualityByte !== 1 && qualityByte !== 2)
+    || (autoplayByte !== 0 && autoplayByte !== 1)
+    || (showNowPlayingByte !== 0 && showNowPlayingByte !== 1)
+    || (playlistCreatedByte !== 0 && playlistCreatedByte !== 1)) return undefined;
+  const autoplay = autoplayByte === 1;
+  const showNowPlaying = showNowPlayingByte === 1;
+  const playlistCreated = playlistCreatedByte === 1;
   const likedCount = bytes[at + 4];
   const playlistCount = bytes[at + 5];
   if (likedCount > MAX_TRACKS || playlistCount > MAX_TRACKS) return undefined;
