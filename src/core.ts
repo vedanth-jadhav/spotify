@@ -330,11 +330,129 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return [startTrack(model, id, track, false), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
     }
     case "queue_track": {
+      if (model.queue.length >= MAX_QUEUE) return [model, Cmd.none];
       const raw = msg.queueTrackId;
-      if (!(raw >= 1 && raw <= 30)) return [model, Cmd.none];
-      const id = Math.trunc(raw);
-      if (model.queue.length >= MAX_QUEUE || model.queue.find((item) => item.id === id) !== undefined) return [model, Cmd.none];
-      return [{ ...model, queue: [...model.queue, { id: id }] }, Cmd.none];
+      if (raw === 1) {
+        if (model.queue.find((item) => item.id === 1) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 1 }] }, Cmd.none];
+      }
+      if (raw === 2) {
+        if (model.queue.find((item) => item.id === 2) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 2 }] }, Cmd.none];
+      }
+      if (raw === 3) {
+        if (model.queue.find((item) => item.id === 3) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 3 }] }, Cmd.none];
+      }
+      if (raw === 4) {
+        if (model.queue.find((item) => item.id === 4) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 4 }] }, Cmd.none];
+      }
+      if (raw === 5) {
+        if (model.queue.find((item) => item.id === 5) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 5 }] }, Cmd.none];
+      }
+      if (raw === 6) {
+        if (model.queue.find((item) => item.id === 6) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 6 }] }, Cmd.none];
+      }
+      if (raw === 7) {
+        if (model.queue.find((item) => item.id === 7) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 7 }] }, Cmd.none];
+      }
+      if (raw === 8) {
+        if (model.queue.find((item) => item.id === 8) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 8 }] }, Cmd.none];
+      }
+      if (raw === 9) {
+        if (model.queue.find((item) => item.id === 9) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 9 }] }, Cmd.none];
+      }
+      if (raw === 10) {
+        if (model.queue.find((item) => item.id === 10) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 10 }] }, Cmd.none];
+      }
+      if (raw === 11) {
+        if (model.queue.find((item) => item.id === 11) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 11 }] }, Cmd.none];
+      }
+      if (raw === 12) {
+        if (model.queue.find((item) => item.id === 12) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 12 }] }, Cmd.none];
+      }
+      if (raw === 13) {
+        if (model.queue.find((item) => item.id === 13) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 13 }] }, Cmd.none];
+      }
+      if (raw === 14) {
+        if (model.queue.find((item) => item.id === 14) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 14 }] }, Cmd.none];
+      }
+      if (raw === 15) {
+        if (model.queue.find((item) => item.id === 15) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 15 }] }, Cmd.none];
+      }
+      if (raw === 16) {
+        if (model.queue.find((item) => item.id === 16) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 16 }] }, Cmd.none];
+      }
+      if (raw === 17) {
+        if (model.queue.find((item) => item.id === 17) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 17 }] }, Cmd.none];
+      }
+      if (raw === 18) {
+        if (model.queue.find((item) => item.id === 18) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 18 }] }, Cmd.none];
+      }
+      if (raw === 19) {
+        if (model.queue.find((item) => item.id === 19) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 19 }] }, Cmd.none];
+      }
+      if (raw === 20) {
+        if (model.queue.find((item) => item.id === 20) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 20 }] }, Cmd.none];
+      }
+      if (raw === 21) {
+        if (model.queue.find((item) => item.id === 21) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 21 }] }, Cmd.none];
+      }
+      if (raw === 22) {
+        if (model.queue.find((item) => item.id === 22) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 22 }] }, Cmd.none];
+      }
+      if (raw === 23) {
+        if (model.queue.find((item) => item.id === 23) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 23 }] }, Cmd.none];
+      }
+      if (raw === 24) {
+        if (model.queue.find((item) => item.id === 24) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 24 }] }, Cmd.none];
+      }
+      if (raw === 25) {
+        if (model.queue.find((item) => item.id === 25) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 25 }] }, Cmd.none];
+      }
+      if (raw === 26) {
+        if (model.queue.find((item) => item.id === 26) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 26 }] }, Cmd.none];
+      }
+      if (raw === 27) {
+        if (model.queue.find((item) => item.id === 27) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 27 }] }, Cmd.none];
+      }
+      if (raw === 28) {
+        if (model.queue.find((item) => item.id === 28) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 28 }] }, Cmd.none];
+      }
+      if (raw === 29) {
+        if (model.queue.find((item) => item.id === 29) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 29 }] }, Cmd.none];
+      }
+      if (raw === 30) {
+        if (model.queue.find((item) => item.id === 30) !== undefined) return [model, Cmd.none];
+        return [{ ...model, queue: [...model.queue, { id: 30 }] }, Cmd.none];
+      }
+      return [model, Cmd.none];
     }
     case "toggle_like": {
       const raw = msg.likeTrackId;
