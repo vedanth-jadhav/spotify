@@ -23,14 +23,8 @@ jobs:
       - run: npm install
       - name: Validate native sources
         run: npx native check --yes
-      - name: Prove checked-out core and clear generated caches
-        shell: bash
-        run: |
-          git rev-parse HEAD
-          git hash-object src/core.ts
-          sed -n '114,124p' src/core.ts
-          sed -n '332,339p' src/core.ts
-          rm -rf .native/build .zig-cache zig-out
+      - name: Clean generated caches
+        run: rm -rf .native/build .zig-cache zig-out
       - name: Build with automation
         run: npx native build --yes -Dautomation=true
       - name: Launch and capture deterministic canvas
@@ -41,10 +35,10 @@ jobs:
           npx native automate wait
           npx native automate resize 1440 900 1
           npx native automate snapshot
-          npx native automate screenshot spotify-canvas 1
-          test -s screenshot-spotify-canvas.png
+          CAPTURE="$(npx native automate screenshot spotify-canvas 1 | tail -1)"
+          test -s "$CAPTURE"
           mkdir -p docs/screenshots
-          cp screenshot-spotify-canvas.png docs/screenshots/home.png
+          cp "$CAPTURE" docs/screenshots/home.png
       - name: Stop app
         if: always()
         shell: bash
