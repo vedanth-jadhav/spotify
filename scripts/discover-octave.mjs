@@ -1,69 +1,58 @@
 const ORIGIN = "https://music.octavestreaming.com";
+const API = "https://api.octavestreaming.com/api";
 const TIMEOUT_MS = 8000;
 
 async function get(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const r = await fetch(url, { signal: controller.signal, redirect: "follow", headers: { "user-agent": "OctaveNativeProbe/3.0" } });
+    const r = await fetch(url, { signal: controller.signal, redirect: "follow", headers: { "user-agent": "OctaveNativeProbe/4.0", accept: "application/json,text/plain,*/*" } });
     console.log(`FETCH ${r.status} ${r.url}`);
-    return r.ok ? await r.text() : "";
+    return { status: r.status, body: await r.text(), type: r.headers.get("content-type") ?? "" };
   } catch (error) {
     console.log(`FETCH_ERROR ${url} ${error?.name ?? "Error"}`);
-    return "";
+    return { status: 0, body: "", type: "" };
   } finally { clearTimeout(timer); }
 }
 
 function absolute(url) { return new URL(url, ORIGIN).href; }
-function collect(text, source, out) {
-  const normalized = text.replaceAll("\\/", "/");
-  for (const m of normalized.matchAll(/https?:\/\/[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]+/g)) {
-    const v = m[0];
-    if (/octave|deezer|dzcdn|lyrics|stream|media|api/i.test(v)) out.add(`URL ${v} <- ${source}`);
-  }
-  for (const m of normalized.matchAll(/["'`]((?:\/api\/|\/)(?:search|track|playlist|artist|album|radio|podcast|lyrics|stream|download|media|gateway|proxy)[^"'`\\ ]{0,160})["'`]/gi)) {
-    out.add(`PATH ${m[1]} <- ${source}`);
-  }
-}
-
-const html = await get(`${ORIGIN}/`);
-if (!html) process.exit(1);
-const scriptUrls = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)]
-  .map(m => absolute(m[1]))
-  .filter((v, i, a) => a.indexOf(v) === i)
-  .slice(0, 40);
-console.log(`SCRIPTS ${scriptUrls.length}`);
-const texts = await Promise.all(scriptUrls.map(async url => [url, await get(url)]));
-const found = new Set();
-collect(html, "html", found);
-for (const [url, text] of texts) if (text) collect(text, url.split("/").pop() ?? url, found);
-console.log(`ROUTES ${found.size}`);
-for (const item of [...found].filter(x => !x.includes("cdn-images.dzcdn.net")).sort()) console.log(item);
-
-console.log("=== CONTRACT CONTEXT ===");
+const home = await get(`${ORIGIN}/`);
+if (!home.body) process.exit(1);
+const scriptUrls = [...home.body.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)]
+  .map(m => absolute(m[1])).filter((v, i, a) => a.indexOf(v) === i).slice(0, 40);
+const texts = await Promise.all(scriptUrls.map(async url => [url, (await get(url)).body]));
 for (const [url, text] of texts) {
-  if (!text) continue;
-  const normalized = text.replaceAll("\\/", "/");
-  for (const needle of ["https://api.octavestreaming.com", "/search/tracks?query=", "/track/${t}?quality=", "/lyrics"]) {
-    const at = normalized.indexOf(needle);
-    if (at >= 0) console.log(`CONTEXT ${needle} ${normalized.slice(Math.max(0, at - 700), Math.min(normalized.length, at + 1400)).replace(/\s+/g, " ")} <- ${url.split("/").pop()}`);
-  }
+  if (!text.includes("QUALITY_SPECS")) continue;
+  const at = text.indexOf("QUALITY_SPECS");
+  console.log(`QUALITY_CONTEXT ${text.slice(Math.max(0, at - 1800), at + 2500).replace(/\s+/g, " ")} <- ${url.split("/").pop()}`);
 }
 
-console.log("=== LIVE CONTRACT ===");
-const searchUrl = "https://api.octavestreaming.com/search/tracks?query=Daft%20Punk&limit=2";
-const searchBody = await get(searchUrl);
-console.log(`SEARCH_BODY ${searchBody.slice(0, 5000).replace(/\s+/g, " ")}`);
-let firstTrackId = "";
+console.log("=== LIVE SEARCH ===");
+const search = await get(`${API}/search/tracks?query=Daft%20Punk&limit=2`);
+console.log(`SEARCH_TYPE ${search.type}`);
+console.log(`SEARCH_BODY ${search.body.slice(0, 7000).replace(/\s+/g, " ")}`);
+let first = null;
 try {
-  const parsed = JSON.parse(searchBody);
-  const candidates = Array.isArray(parsed) ? parsed : (parsed?.data ?? parsed?.tracks ?? parsed?.results ?? []);
-  if (Array.isArray(candidates) && candidates.length) firstTrackId = String(candidates[0]?.id ?? candidates[0]?.track?.id ?? "");
+  const parsed = JSON.parse(search.body);
+  const results = Array.isArray(parsed?.results) ? parsed.results : [];
+  first = results[0] ?? null;
 } catch {}
-console.log(`FIRST_TRACK_ID ${firstTrackId}`);
-if (firstTrackId) {
-  for (const quality of ["128", "320", "MP3_128", "MP3_320", "FLAC", "LOSSLESS"]) {
-    const body = await get(`https://api.octavestreaming.com/track/${encodeURIComponent(firstTrackId)}?quality=${encodeURIComponent(quality)}`);
-    console.log(`TRACK_${quality} ${body.slice(0, 2500).replace(/\s+/g, " ")}`);
+const id = first?.id == null ? "" : String(first.id);
+console.log(`FIRST_TRACK ${id} ${first ? JSON.stringify(first).slice(0, 3500) : ""}`);
+
+if (id) {
+  console.log("=== LIVE RESOLVE ===");
+  for (const quality of ["128", "320", "flac", "MP3_128", "MP3_320", "FLAC", "DATA_SAVER", "HIGH", "MAX"]) {
+    const r = await get(`${API}/track/${encodeURIComponent(id)}?quality=${encodeURIComponent(quality)}`);
+    console.log(`RESOLVE ${quality} STATUS ${r.status} TYPE ${r.type} BODY ${r.body.slice(0, 1800).replace(/\s+/g, " ")}`);
+  }
+  if (first?.title && first?.artist?.name && first?.album?.title) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const r = await fetch(`${API}/lyrics`, { method: "POST", signal: controller.signal, headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ id, title: first.title, artist: first.artist.name, album: first.album.title, duration: first.duration ?? 0, source: "deezer" }) });
+      console.log(`LYRICS STATUS ${r.status} TYPE ${r.headers.get("content-type") ?? ""} BODY ${(await r.text()).slice(0, 3500).replace(/\s+/g, " ")}`);
+    } catch (error) { console.log(`LYRICS_ERROR ${error?.name ?? "Error"}`); }
+    finally { clearTimeout(timer); }
   }
 }
