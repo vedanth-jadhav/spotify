@@ -1,0 +1,49 @@
+name: Native verification
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+          cache: npm
+      - run: npm install
+      - name: Native subset + markup validation
+        run: npx native check --yes
+      - name: State and provider tests
+        run: node --test --experimental-strip-types tests/*.test.ts
+      - name: Native SDK tests
+        run: npx native test --yes
+      - name: Release build
+        run: npx native build --yes
+      - name: WebView and source-size performance budget
+        run: node scripts/perf-budget.mjs
+      - name: Octave public surface smoke test
+        run: node scripts/smoke-octave.mjs
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+      - run: npm install
+      - run: npm audit --audit-level=high
+      - name: Reject obvious committed credentials
+        run: |
+          if grep -RInE '(api[_-]?key|secret|token)[[:space:]]*[:=][[:space:]]*["'"'][A-Za-z0-9_\-]{20,}' --exclude-dir=.git --exclude='*.md' .; then
+            echo 'Potential credential committed'; exit 1;
+          fi
