@@ -1,30 +1,61 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deezerSearchFallbackUrl, octaveLyricsUrl, octaveStreamUrl, parseDeezerSearch, percentEncode } from "../src/provider.ts";
+import { octaveLyricsUrl, octaveResolveUrl, octaveSearchUrl, parseDeezerSearch, parseOctaveResolve, parseOctaveSearch, percentEncode } from "../src/provider.ts";
 
-const bytes = (text: string) => new TextEncoder().encode(text);
-const text = (value: Uint8Array) => new TextDecoder().decode(value);
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+const b = (value: string) => enc.encode(value);
+const s = (value: Uint8Array) => dec.decode(value);
 
-test("percentEncode is UTF-8 byte safe", () => {
-  assert.equal(text(percentEncode(bytes("A B/é"))), "A%20B%2F%C3%A9");
+test("percentEncode escapes UTF-8 and reserved query bytes", () => {
+  assert.equal(s(percentEncode(b("daft punk & more"))), "daft%20punk%20%26%20more");
 });
 
-test("endpoint builders remain centralized and deterministic", () => {
-  assert.equal(text(octaveStreamUrl(3135556)), "https://music.octavestreaming.com/api/stream/3135556");
-  assert.equal(text(octaveLyricsUrl(3135556)), "https://music.octavestreaming.com/api/lyrics/3135556");
-  assert.equal(text(deezerSearchFallbackUrl(bytes("Daft Punk"))), "https://api.deezer.com/search?limit=30&q=Daft%20Punk");
+test("Octave production routes match the deployed client contract", () => {
+  assert.equal(s(octaveSearchUrl(b("Daft Punk"))), "https://api.octavestreaming.com/api/search/tracks?query=Daft%20Punk&limit=30");
+  assert.equal(s(octaveResolveUrl(b("136889400"))), "https://api.octavestreaming.com/api/track/136889400?quality=320");
+  assert.equal(s(octaveResolveUrl(b("136889400"), "128")), "https://api.octavestreaming.com/api/track/136889400?quality=128");
+  assert.equal(s(octaveResolveUrl(b("136889400"), "lossless")), "https://api.octavestreaming.com/api/track/136889400?quality=lossless");
+  assert.equal(s(octaveLyricsUrl()), "https://api.octavestreaming.com/api/lyrics");
 });
 
-test("Deezer-compatible parser extracts playable search rows", () => {
-  const fixture = bytes('{"data":[{"id":3135556,"readable":true,"title":"Harder Better Faster Stronger","duration":224,"preview":"https://cdn.example/preview.mp3","artist":{"id":27,"name":"Daft Punk"},"album":{"id":302127,"title":"Discovery","cover_medium":"https://cdn.example/cover.jpg"}}]}');
+test("parseOctaveSearch reads the live Octave search shape", () => {
+  const fixture = b(JSON.stringify({ results: [{
+    id: "136889400", title: "Starboy", artist: { id: "4050205", name: "The Weeknd" },
+    album: { id: "14652356", title: "Starboy", cover_medium: "https://cdn-images.dzcdn.net/cover.jpg" },
+    duration: 230, previewUrl: "https://cdnt-preview.dzcdn.net/preview.mp3", explicit: true, rank: 975897
+  }] }));
+  const tracks = parseOctaveSearch(fixture);
+  assert.equal(tracks.length, 1);
+  assert.equal(s(tracks[0].remoteId), "136889400");
+  assert.equal(s(tracks[0].title), "Starboy");
+  assert.equal(s(tracks[0].artist), "The Weeknd");
+  assert.equal(s(tracks[0].album), "Starboy");
+  assert.equal(tracks[0].durationSec, 230);
+  assert.equal(s(tracks[0].coverUrl), "https://cdn-images.dzcdn.net/cover.jpg");
+  assert.equal(s(tracks[0].fallbackPreviewUrl), "https://cdnt-preview.dzcdn.net/preview.mp3");
+});
+
+test("parseOctaveResolve returns the signed audio and preview URLs", () => {
+  const resolved = parseOctaveResolve(b('{"url":"https://api.octavestreaming.com/audio/320?track=1&k=abc","preview":"https://preview/1.mp3","id":"1","quality":"320"}'));
+  assert.equal(s(resolved.url), "https://api.octavestreaming.com/audio/320?track=1&k=abc");
+  assert.equal(s(resolved.preview), "https://preview/1.mp3");
+});
+
+test("Deezer fallback remains bounded and maps remote IDs without leaking them into native state", () => {
+  const fixture = b(JSON.stringify({ data: [{
+    id: 3135556, title: "Harder Better Faster Stronger", duration: 224, preview: "https://preview/3135556.mp3",
+    artist: { name: "Daft Punk" }, album: { title: "Discovery", cover_medium: "https://cover/3135556.jpg" }
+  }] }));
   const tracks = parseDeezerSearch(fixture);
   assert.equal(tracks.length, 1);
-  assert.equal(tracks[0].id, 3135556);
-  assert.equal(text(tracks[0].artist), "Daft Punk");
-  assert.equal(text(tracks[0].album), "Discovery");
-  assert.equal(text(tracks[0].streamUrl), "https://music.octavestreaming.com/api/stream/3135556");
+  assert.equal(s(tracks[0].remoteId), "3135556");
+  assert.equal(s(tracks[0].title), "Harder Better Faster Stronger");
 });
 
-test("malformed payload degrades to an empty result", () => {
-  assert.deepEqual(parseDeezerSearch(bytes("not json")), []);
+test("malformed payloads fail closed", () => {
+  assert.deepEqual(parseOctaveSearch(b("not-json-ish")), []);
+  const resolved = parseOctaveResolve(b("{}"));
+  assert.equal(resolved.url.length, 0);
+  assert.equal(resolved.preview.length, 0);
 });

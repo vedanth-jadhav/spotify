@@ -28,7 +28,7 @@
     },
     .security = .{
         .navigation = .{
-            .allowed_origins = .{ "zero://app", "zero://inline", "https://music.octavestreaming.com", "https://cdn-images.dzcdn.net" },
+            .allowed_origins = .{ "zero://app", "zero://inline", "https://music.octavestreaming.com", "https://api.octavestreaming.com", "https://cdn-images.dzcdn.net", "https://cdnt-preview.dzcdn.net" },
             .external_links = .{ .action = "deny" },
         },
     },

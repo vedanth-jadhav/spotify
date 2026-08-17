@@ -1,7 +1,7 @@
 import { Cmd, Sub, asciiBytes } from "@native-sdk/core";
 import { applyTextInputEvent, clampedInsertEvent, type TextEditState, type TextInputEvent } from "@native-sdk/core/text";
 import { type AudioState } from "@native-sdk/core/events";
-import { deezerSearchFallbackUrl, formatSeconds, octaveSearchUrl, parseDeezerSearch, type Bytes, type Track } from "./provider.ts";
+import { deezerSearchFallbackUrl, formatSeconds, octaveResolveUrl, octaveSearchUrl, parseDeezerSearch, parseOctaveResolve, parseOctaveSearch, type Bytes, type Track } from "./provider.ts";
 
 export type Page = "home" | "search" | "library" | "lyrics" | "queue";
 export type RepeatMode = "off" | "context" | "one";
@@ -32,6 +32,7 @@ export interface Model {
   readonly buffering: boolean;
   readonly loadPending: boolean;
   readonly fallbackPlayback: boolean;
+  readonly audioReady: boolean;
   readonly positionMs: number;
   readonly durationMs: number;
   readonly volumePermille: number;
@@ -65,6 +66,8 @@ export type Msg =
   | { readonly kind: "octave_search_failed"; readonly reason: Bytes }
   | { readonly kind: "fallback_search_done"; readonly status: number; readonly body: Bytes }
   | { readonly kind: "fallback_search_failed"; readonly reason: Bytes }
+  | { readonly kind: "resolve_track_done"; readonly status: number; readonly body: Bytes }
+  | { readonly kind: "resolve_track_failed"; readonly reason: Bytes }
   | { readonly kind: "play_track"; readonly playTrackId: number }
   | { readonly kind: "toggle_play" }
   | { readonly kind: "next_track" }
@@ -79,7 +82,7 @@ export type Msg =
   | { readonly kind: "clock_tick"; readonly at: number };
 
 export const viewUnbound = [
-  "search_fire", "octave_search_done", "octave_search_failed", "fallback_search_done", "fallback_search_failed", "audio_event", "clock_tick",
+  "search_fire", "octave_search_done", "octave_search_failed", "fallback_search_done", "fallback_search_failed", "resolve_track_done", "resolve_track_failed", "audio_event", "clock_tick",
 ] as const;
 
 const MAX_SEARCH = 96;
@@ -127,6 +130,7 @@ export function initialModel(): Model {
     buffering: false,
     loadPending: false,
     fallbackPlayback: false,
+    audioReady: false,
     positionMs: 0,
     durationMs: 0,
     volumePermille: 760,
@@ -198,6 +202,7 @@ function startTrack(model: Model, id: number, track: Track, fallback: boolean): 
     buffering: false,
     loadPending: true,
     fallbackPlayback: fallback,
+    audioReady: false,
     positionMs: 0,
     durationMs: seconds * 1000,
     error: new Uint8Array(0),
@@ -234,7 +239,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       ];
     }
     case "octave_search_done": {
-      const parsed = msg.status >= 200 && msg.status < 300 ? parseDeezerSearch(msg.body) : [];
+      const parsed = msg.status >= 200 && msg.status < 300 ? parseOctaveSearch(msg.body) : [];
       if (parsed.length > 0) return [{ ...model, tracks: parsed, searchPhase: "ready", error: new Uint8Array(0) }, Cmd.none];
       return [
         { ...model, searchPhase: "loading_fallback" },
@@ -252,30 +257,52 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return [{ ...model, tracks: parsed, searchPhase: "ready", error: new Uint8Array(0) }, Cmd.none];
     }
     case "fallback_search_failed": return [{ ...model, tracks: [], searchPhase: "failed", error: msg.reason }, Cmd.none];
+    case "resolve_track_done": {
+      const track = currentTrack(model);
+      if (track === undefined) return [{ ...model, playing: false, loadPending: false, audioReady: false }, Cmd.none];
+      if (msg.status >= 200 && msg.status < 300) {
+        const resolved = parseOctaveResolve(msg.body);
+        if (resolved.url.length > 0) return [model, Cmd.audioPlay("player", { url: resolved.url }, { event: "audio_event" })];
+        if (resolved.preview.length > 0) return [{ ...model, fallbackPlayback: true }, Cmd.audioPlay("player", { url: resolved.preview }, { event: "audio_event" })];
+      }
+      if (track.fallbackPreviewUrl.length > 0) return [{ ...model, fallbackPlayback: true }, Cmd.audioPlay("player", { url: track.fallbackPreviewUrl }, { event: "audio_event" })];
+      return [{ ...model, playing: false, loadPending: false, audioReady: false, error: asciiBytes("Playback resolver returned no playable URL") }, Cmd.none];
+    }
+    case "resolve_track_failed": {
+      const track = currentTrack(model);
+      if (track !== undefined && track.fallbackPreviewUrl.length > 0) return [{ ...model, fallbackPlayback: true }, Cmd.audioPlay("player", { url: track.fallbackPreviewUrl }, { event: "audio_event" })];
+      return [{ ...model, playing: false, loadPending: false, audioReady: false, error: msg.reason }, Cmd.none];
+    }
     case "play_track": {
       const raw = msg.playTrackId;
       const id = raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
       if (id === 0) return [model, Cmd.none];
       const track = trackById(model, id);
       if (track === undefined) return [model, Cmd.none];
-      return [startTrack(model, id, track, false), Cmd.audioPlay("player", { url: track.streamUrl }, { event: "audio_event" })];
+      return [startTrack(model, id, track, false), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
     }
     case "toggle_play": {
       if (model.nowId === 0) {
         if (model.tracks.length === 0) return [model, Cmd.none];
         const track = trackById(model, 1);
         if (track === undefined) return [model, Cmd.none];
-        return [startTrack(model, 1, track, false), Cmd.audioPlay("player", { url: track.streamUrl }, { event: "audio_event" })];
+        return [startTrack(model, 1, track, false), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
       }
+      if (model.loadPending) return [model, Cmd.none];
       if (model.playing) return [{ ...model, playing: false }, Cmd.audioPause("player")];
+      if (!model.audioReady) {
+        const track = currentTrack(model);
+        if (track === undefined) return [model, Cmd.none];
+        return [{ ...model, playing: true, loadPending: true }, Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+      }
       return [{ ...model, playing: true }, Cmd.audioResume("player")];
     }
     case "next_track": {
       const id = nextId(model);
-      if (id === 0) return [{ ...model, playing: false }, Cmd.audioStop("player")];
+      if (id === 0) return [{ ...model, playing: false, audioReady: false }, Cmd.audioStop("player")];
       const track = trackById(model, id);
-      if (track === undefined) return [{ ...model, playing: false }, Cmd.audioStop("player")];
-      return [startTrack(model, id, track, false), Cmd.audioPlay("player", { url: track.streamUrl }, { event: "audio_event" })];
+      if (track === undefined) return [{ ...model, playing: false, audioReady: false }, Cmd.audioStop("player")];
+      return [startTrack(model, id, track, false), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
     }
     case "prev_track": {
       if (model.positionMs > 4000) return [{ ...model, positionMs: 0 }, Cmd.audioSeek("player", 0)];
@@ -283,7 +310,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       if (id === 0) return [model, Cmd.none];
       const track = trackById(model, id);
       if (track === undefined) return [model, Cmd.none];
-      return [startTrack(model, id, track, false), Cmd.audioPlay("player", { url: track.streamUrl }, { event: "audio_event" })];
+      return [startTrack(model, id, track, false), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
     }
     case "queue_track": {
       const raw = msg.queueTrackId;
@@ -325,7 +352,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
           const durationRaw = msg.durationMs;
           const pos = posRaw >= 0 && posRaw <= 9007199254740991 ? Math.trunc(posRaw) : 0;
           const duration = durationRaw > 0 && durationRaw <= 9007199254740991 ? Math.trunc(durationRaw) : model.durationMs;
-          return [{ ...model, loadPending: false, playing: msg.playing, buffering: msg.buffering, positionMs: pos, durationMs: duration }, Cmd.none];
+          return [{ ...model, loadPending: false, audioReady: true, playing: msg.playing, buffering: msg.buffering, positionMs: pos, durationMs: duration }, Cmd.none];
         }
         case "position": {
           if (model.loadPending) return [model, Cmd.none];
@@ -339,16 +366,16 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
         case "spectrum": return [model, Cmd.none];
         case "completed": {
           const id = nextId(model);
-          if (id === 0) return [{ ...model, playing: false, positionMs: model.durationMs }, Cmd.none];
+          if (id === 0) return [{ ...model, playing: false, audioReady: false, positionMs: model.durationMs }, Cmd.none];
           const track = trackById(model, id);
           if (track === undefined) return [{ ...model, playing: false }, Cmd.none];
-          return [startTrack(model, id, track, false), Cmd.audioPlay("player", { url: track.streamUrl }, { event: "audio_event" })];
+          return [startTrack(model, id, track, false), Cmd.fetch({ url: octaveResolveUrl(track.remoteId), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
         }
         case "failed":
         case "rejected": {
           const track = currentTrack(model);
           if (track !== undefined && !model.fallbackPlayback && track.fallbackPreviewUrl.length > 0) return [startTrack(model, model.nowId, track, true), Cmd.audioPlay("player", { url: track.fallbackPreviewUrl }, { event: "audio_event" })];
-          return [{ ...model, playing: false, buffering: false, loadPending: false, error: asciiBytes("Playback unavailable for this track") }, Cmd.none];
+          return [{ ...model, playing: false, buffering: false, loadPending: false, audioReady: false, error: asciiBytes("Playback unavailable for this track") }, Cmd.none];
         }
       }
     }

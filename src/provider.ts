@@ -1,21 +1,27 @@
 import { asciiBytes } from "@native-sdk/core";
 
 export type Bytes = Uint8Array;
+export type OctaveQuality = "128" | "320" | "lossless";
 
 export interface Track {
-  readonly id: number;
+  readonly remoteId: Bytes;
   readonly title: Bytes;
   readonly artist: Bytes;
   readonly album: Bytes;
   readonly durationSec: number;
   readonly coverUrl: Bytes;
-  readonly streamUrl: Bytes;
   readonly fallbackPreviewUrl: Bytes;
 }
 
+export interface ResolvedTrack {
+  readonly url: Bytes;
+  readonly preview: Bytes;
+}
+
 export const OCTAVE_ORIGIN = asciiBytes("https://music.octavestreaming.com");
-export const OCTAVE_API = asciiBytes("https://music.octavestreaming.com/api");
+export const OCTAVE_API = asciiBytes("https://api.octavestreaming.com/api");
 export const DEEZER_API = asciiBytes("https://api.deezer.com");
+export const OCTAVE_DEFAULT_QUALITY: OctaveQuality = "320";
 
 const HEX = asciiBytes("0123456789ABCDEF");
 
@@ -28,6 +34,10 @@ export function concatBytes(a: Bytes, b: Bytes): Bytes {
 
 export function concat3(a: Bytes, b: Bytes, c: Bytes): Bytes {
   return concatBytes(concatBytes(a, b), c);
+}
+
+function concat5(a: Bytes, b: Bytes, c: Bytes, d: Bytes, e: Bytes): Bytes {
+  return concatBytes(concat3(a, b, c), concatBytes(d, e));
 }
 
 function safeQueryByte(ch: number): boolean {
@@ -69,34 +79,26 @@ function decimalBytes(value: number): Bytes {
   return out;
 }
 
-/**
- * Octave does not currently publish a stable public API contract. All guessed
- * proxy paths are kept here, in one module, so a server-side route change never
- * leaks into UI/state code. Search has a Deezer-compatible fallback because
- * Octave's public catalog is Deezer-backed today.
- */
+/** Production routes extracted from Octave's deployed Next.js client. */
 export function octaveSearchUrl(query: Bytes): Bytes {
-  return concat3(OCTAVE_API, asciiBytes("/search?q="), percentEncode(query));
+  return concat5(OCTAVE_API, asciiBytes("/search/tracks?query="), percentEncode(query), asciiBytes("&limit="), asciiBytes("30"));
 }
 
 export function deezerSearchFallbackUrl(query: Bytes): Bytes {
   return concat3(DEEZER_API, asciiBytes("/search?limit=30&q="), percentEncode(query));
 }
 
-export function octaveHomeUrl(): Bytes {
-  return concatBytes(OCTAVE_API, asciiBytes("/home"));
+export function octaveResolveUrl(remoteId: Bytes, quality: OctaveQuality = OCTAVE_DEFAULT_QUALITY): Bytes {
+  const segment = quality === "128" ? asciiBytes("128") : quality === "lossless" ? asciiBytes("lossless") : asciiBytes("320");
+  return concat5(OCTAVE_API, asciiBytes("/track/"), remoteId, asciiBytes("?quality="), segment);
 }
 
-export function octaveTrackUrl(id: number): Bytes {
-  return concat3(OCTAVE_API, asciiBytes("/track/"), decimalBytes(id));
+export function octaveTrackRadioUrl(remoteId: Bytes): Bytes {
+  return concat3(OCTAVE_API, asciiBytes("/track/"), concatBytes(remoteId, asciiBytes("/radio")));
 }
 
-export function octaveStreamUrl(id: number): Bytes {
-  return concat3(OCTAVE_API, asciiBytes("/stream/"), decimalBytes(id));
-}
-
-export function octaveLyricsUrl(id: number): Bytes {
-  return concat3(OCTAVE_API, asciiBytes("/lyrics/"), decimalBytes(id));
+export function octaveLyricsUrl(): Bytes {
+  return concatBytes(OCTAVE_API, asciiBytes("/lyrics"));
 }
 
 function bytesEqualAt(haystack: Bytes, at: number, needle: Bytes): boolean {
@@ -169,6 +171,41 @@ function idBefore(bytes: Bytes, before: number): number {
   return found < 0 ? 0 : parseUnsignedAt(bytes, found + key.length);
 }
 
+export function parseOctaveSearch(body: Bytes): readonly Track[] {
+  const idKey = asciiBytes("\"id\":");
+  const titleKey = asciiBytes("\"title\":");
+  const durationKey = asciiBytes("\"duration\":");
+  const previewKey = asciiBytes("\"previewUrl\":");
+  const artistKey = asciiBytes("\"artist\":{");
+  const albumKey = asciiBytes("\"album\":{");
+  const nameKey = asciiBytes("\"name\":");
+  const coverKey = asciiBytes("\"cover_medium\":");
+  const out: Track[] = [];
+  let cursor = 0;
+  while (out.length < 30) {
+    const idAt = findFrom(body, idKey, cursor);
+    if (idAt < 0) break;
+    const titleAt = findFrom(body, titleKey, idAt);
+    const artistAt = findFrom(body, artistKey, titleAt);
+    const albumAt = findFrom(body, albumKey, artistAt);
+    const durationAt = findFrom(body, durationKey, albumAt);
+    const previewAt = findFrom(body, previewKey, durationAt);
+    if (titleAt < 0 || artistAt < 0 || albumAt < 0 || durationAt < 0 || previewAt < 0) break;
+    const remoteId = jsonStringAfter(body, idKey, idAt);
+    const title = jsonStringAfter(body, titleKey, titleAt);
+    const artist = jsonStringAfter(body, nameKey, artistAt);
+    const album = jsonStringAfter(body, titleKey, albumAt);
+    const cover = jsonStringAfter(body, coverKey, albumAt);
+    const preview = jsonStringAfter(body, previewKey, previewAt);
+    const duration = parseUnsignedAt(body, durationAt + durationKey.length);
+    if (remoteId.length > 0 && title.length > 0) {
+      out.push({ remoteId: remoteId, title: title, artist: artist, album: album, durationSec: duration, coverUrl: cover, fallbackPreviewUrl: preview });
+    }
+    cursor = previewAt + previewKey.length;
+  }
+  return out;
+}
+
 export function parseDeezerSearch(body: Bytes): readonly Track[] {
   const titleKey = asciiBytes("\"title\":");
   const durationKey = asciiBytes("\"duration\":");
@@ -195,20 +232,17 @@ export function parseDeezerSearch(body: Bytes): readonly Track[] {
     const preview = jsonStringAfter(body, previewKey, previewAt);
     const duration = parseUnsignedAt(body, durationAt + durationKey.length);
     if (id > 0 && title.length > 0) {
-      out.push({
-        id: id,
-        title: title,
-        artist: artist,
-        album: album,
-        durationSec: duration,
-        coverUrl: cover,
-        streamUrl: octaveStreamUrl(id),
-        fallbackPreviewUrl: preview,
-      });
+      out.push({ remoteId: decimalBytes(id), title: title, artist: artist, album: album, durationSec: duration, coverUrl: cover, fallbackPreviewUrl: preview });
     }
     cursor = Math.max(previewAt + previewKey.length, titleAt + titleKey.length);
   }
   return out;
+}
+
+export function parseOctaveResolve(body: Bytes): ResolvedTrack {
+  const url = jsonStringAfter(body, asciiBytes("\"url\":"), 0);
+  const preview = jsonStringAfter(body, asciiBytes("\"preview\":"), 0);
+  return { url: url, preview: preview };
 }
 
 export function formatSeconds(value: number): Bytes {
