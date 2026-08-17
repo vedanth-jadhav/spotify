@@ -36,24 +36,17 @@ function trackSize(track: Track): number {
 
 function writeU16(out: Uint8Array, at: number, value: number): number {
   const safe = value >= 0 && value <= 65535 ? Math.trunc(value) : 0;
-  const high = Math.trunc(safe / 256);
-  out[at] = high;
-  out[at + 1] = safe - high * 256;
+  out[at] = (safe >>> 8) & 255;
+  out[at + 1] = safe & 255;
   return at + 2;
 }
 
 function writeU32(out: Uint8Array, at: number, value: number): number {
   const safe = value >= 0 && value <= 4294967295 ? Math.trunc(value) : 0;
-  const b0 = Math.trunc(safe / 16777216);
-  let rest = safe - b0 * 16777216;
-  const b1 = Math.trunc(rest / 65536);
-  rest -= b1 * 65536;
-  const b2 = Math.trunc(rest / 256);
-  const b3 = rest - b2 * 256;
-  out[at] = b0;
-  out[at + 1] = b1;
-  out[at + 2] = b2;
-  out[at + 3] = b3;
+  out[at] = (safe >>> 24) & 255;
+  out[at + 1] = (safe >>> 16) & 255;
+  out[at + 2] = (safe >>> 8) & 255;
+  out[at + 3] = safe & 255;
   return at + 4;
 }
 
