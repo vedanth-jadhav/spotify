@@ -6,7 +6,7 @@
     .version = "0.1.0",
     .platforms = .{ "macos" },
     .permissions = .{ "view", "network", "filesystem" },
-    .capabilities = .{ "native_views", "gpu_surfaces", "audio_playback", "network", "filesystem" },
+    .capabilities = .{ "native_views", "gpu_surfaces", "network", "filesystem" },
     .theme = "geist",
     .theme_accent = "#1ED760",
     .shell = .{
