@@ -23,6 +23,14 @@ jobs:
       - run: npm install
       - name: Validate native sources
         run: npx native check --yes
+      - name: Prove checked-out core and clear generated caches
+        shell: bash
+        run: |
+          git rev-parse HEAD
+          git hash-object src/core.ts
+          sed -n '114,124p' src/core.ts
+          sed -n '332,339p' src/core.ts
+          rm -rf .native/build .zig-cache zig-out
       - name: Build with automation
         run: npx native build --yes -Dautomation=true
       - name: Launch and capture deterministic canvas
