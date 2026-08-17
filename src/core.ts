@@ -39,7 +39,7 @@ export interface Model {
   readonly shuffle: boolean;
   readonly repeat: RepeatMode;
   readonly likedIds: readonly number[];
-  readonly error: Bytes;
+  readonly errorText: Bytes;
 }
 
 export interface TrackRow {
@@ -137,7 +137,7 @@ export function initialModel(): Model {
     shuffle: false,
     repeat: "off",
     likedIds: [],
-    error: new Uint8Array(0),
+    errorText: new Uint8Array(0),
   };
 }
 
@@ -205,7 +205,7 @@ function startTrack(model: Model, id: number, track: Track, fallback: boolean): 
     audioReady: false,
     positionMs: 0,
     durationMs: seconds * 1000,
-    error: new Uint8Array(0),
+    errorText: new Uint8Array(0),
   };
 }
 
@@ -228,8 +228,8 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
     }
     case "search_edit": {
       const search = editDraft(model.search, msg.edit);
-      if (search.bytes.length === 0) return [{ ...model, search: search, searchPhase: "idle", tracks: [], error: new Uint8Array(0) }, Cmd.cancel("search-debounce")];
-      return [{ ...model, page: "search", search: search, searchPhase: "debouncing", error: new Uint8Array(0) }, Cmd.delay("search-debounce", 260, "search_fire")];
+      if (search.bytes.length === 0) return [{ ...model, search: search, searchPhase: "idle", tracks: [], errorText: new Uint8Array(0) }, Cmd.cancel("search-debounce")];
+      return [{ ...model, page: "search", search: search, searchPhase: "debouncing", errorText: new Uint8Array(0) }, Cmd.delay("search-debounce", 260, "search_fire")];
     }
     case "search_fire": {
       if (model.search.bytes.length === 0) return [model, Cmd.none];
@@ -240,7 +240,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
     }
     case "octave_search_done": {
       const parsed = msg.status >= 200 && msg.status < 300 ? parseOctaveSearch(msg.body) : [];
-      if (parsed.length > 0) return [{ ...model, tracks: parsed, searchPhase: "ready", error: new Uint8Array(0) }, Cmd.none];
+      if (parsed.length > 0) return [{ ...model, tracks: parsed, searchPhase: "ready", errorText: new Uint8Array(0) }, Cmd.none];
       return [
         { ...model, searchPhase: "loading_fallback" },
         Cmd.fetch({ url: deezerSearchFallbackUrl(model.search.bytes), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "search", ok: "fallback_search_done", err: "fallback_search_failed" }),
@@ -253,10 +253,10 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       ];
     case "fallback_search_done": {
       const parsed = msg.status >= 200 && msg.status < 300 ? parseDeezerSearch(msg.body) : [];
-      if (parsed.length === 0) return [{ ...model, tracks: [], searchPhase: "failed", error: asciiBytes("No results available") }, Cmd.none];
-      return [{ ...model, tracks: parsed, searchPhase: "ready", error: new Uint8Array(0) }, Cmd.none];
+      if (parsed.length === 0) return [{ ...model, tracks: [], searchPhase: "failed", errorText: asciiBytes("No results available") }, Cmd.none];
+      return [{ ...model, tracks: parsed, searchPhase: "ready", errorText: new Uint8Array(0) }, Cmd.none];
     }
-    case "fallback_search_failed": return [{ ...model, tracks: [], searchPhase: "failed", error: msg.reason }, Cmd.none];
+    case "fallback_search_failed": return [{ ...model, tracks: [], searchPhase: "failed", errorText: msg.reason }, Cmd.none];
     case "resolve_track_done": {
       const track = currentTrack(model);
       if (track === undefined) return [{ ...model, playing: false, loadPending: false, audioReady: false }, Cmd.none];
@@ -266,12 +266,12 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
         if (resolved.preview.length > 0) return [{ ...model, fallbackPlayback: true }, Cmd.audioPlay("player", { url: resolved.preview }, { event: "audio_event" })];
       }
       if (track.fallbackPreviewUrl.length > 0) return [{ ...model, fallbackPlayback: true }, Cmd.audioPlay("player", { url: track.fallbackPreviewUrl }, { event: "audio_event" })];
-      return [{ ...model, playing: false, loadPending: false, audioReady: false, error: asciiBytes("Playback resolver returned no playable URL") }, Cmd.none];
+      return [{ ...model, playing: false, loadPending: false, audioReady: false, errorText: asciiBytes("Playback resolver returned no playable URL") }, Cmd.none];
     }
     case "resolve_track_failed": {
       const track = currentTrack(model);
       if (track !== undefined && track.fallbackPreviewUrl.length > 0) return [{ ...model, fallbackPlayback: true }, Cmd.audioPlay("player", { url: track.fallbackPreviewUrl }, { event: "audio_event" })];
-      return [{ ...model, playing: false, loadPending: false, audioReady: false, error: msg.reason }, Cmd.none];
+      return [{ ...model, playing: false, loadPending: false, audioReady: false, errorText: msg.reason }, Cmd.none];
     }
     case "play_track": {
       const raw = msg.playTrackId;
@@ -375,7 +375,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
         case "rejected": {
           const track = currentTrack(model);
           if (track !== undefined && !model.fallbackPlayback && track.fallbackPreviewUrl.length > 0) return [startTrack(model, model.nowId, track, true), Cmd.audioPlay("player", { url: track.fallbackPreviewUrl }, { event: "audio_event" })];
-          return [{ ...model, playing: false, buffering: false, loadPending: false, audioReady: false, error: asciiBytes("Playback unavailable for this track") }, Cmd.none];
+          return [{ ...model, playing: false, buffering: false, loadPending: false, audioReady: false, errorText: asciiBytes("Playback unavailable for this track") }, Cmd.none];
         }
       }
     }

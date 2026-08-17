@@ -57,7 +57,7 @@
 
       <if test="{pageSearch}"><scroll grow="1" label="Search results"><column padding="24" gap="18">
         <if test="{searchLoading}"><row height="80" main="center" cross="center"><text foreground="text_muted">Searching Octave...</text></row></if>
-        <if test="{searchFailed}"><panel padding="20" background="surface_subtle" radius="md"><column gap="6"><text>Search unavailable</text><text size="sm" foreground="text_muted">{error}</text></column></panel></if>
+        <if test="{searchFailed}"><panel padding="20" background="surface_subtle" radius="md"><column gap="6"><text>Search unavailable</text><text size="sm" foreground="text_muted">{errorText}</text></column></panel></if>
         <if test="{searchReady}"><text><span scale="1.55">Songs</span></text><list role="list" label="Songs">
           <for each="trackRows" as="t" key="id"><list-item key="{t.id}" height="58" padding="8" gap="12" cross="center" selected="{t.active}" on-press="play_track:{t.id}" role="listitem" label="{t.title}">
             <panel width="42" height="42" radius="sm" background="surface_pressed"><row grow="1" main="center" cross="center"><text>Music</text></row></panel>
