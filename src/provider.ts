@@ -88,7 +88,11 @@ export function deezerSearchFallbackUrl(query: Bytes): Bytes {
   return concat3(DEEZER_API, asciiBytes("/search?limit=30&q="), percentEncode(query));
 }
 
-export function octaveResolveUrl(remoteId: Bytes, quality: OctaveQuality = OCTAVE_DEFAULT_QUALITY): Bytes {
+export function octaveResolveUrl(remoteId: Bytes): Bytes {
+  return octaveResolveUrlWithQuality(remoteId, OCTAVE_DEFAULT_QUALITY);
+}
+
+export function octaveResolveUrlWithQuality(remoteId: Bytes, quality: OctaveQuality): Bytes {
   const segment = quality === "128" ? asciiBytes("128") : quality === "lossless" ? asciiBytes("lossless") : asciiBytes("320");
   return concat5(OCTAVE_API, asciiBytes("/track/"), remoteId, asciiBytes("?quality="), segment);
 }

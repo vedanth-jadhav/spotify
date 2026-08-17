@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { octaveLyricsUrl, octaveResolveUrl, octaveSearchUrl, parseDeezerSearch, parseOctaveResolve, parseOctaveSearch, percentEncode } from "../src/provider.ts";
+import { octaveLyricsUrl, octaveResolveUrl, octaveResolveUrlWithQuality, octaveSearchUrl, parseDeezerSearch, parseOctaveResolve, parseOctaveSearch, percentEncode } from "../src/provider.ts";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -14,8 +14,8 @@ test("percentEncode escapes UTF-8 and reserved query bytes", () => {
 test("Octave production routes match the deployed client contract", () => {
   assert.equal(s(octaveSearchUrl(b("Daft Punk"))), "https://api.octavestreaming.com/api/search/tracks?query=Daft%20Punk&limit=30");
   assert.equal(s(octaveResolveUrl(b("136889400"))), "https://api.octavestreaming.com/api/track/136889400?quality=320");
-  assert.equal(s(octaveResolveUrl(b("136889400"), "128")), "https://api.octavestreaming.com/api/track/136889400?quality=128");
-  assert.equal(s(octaveResolveUrl(b("136889400"), "lossless")), "https://api.octavestreaming.com/api/track/136889400?quality=lossless");
+  assert.equal(s(octaveResolveUrlWithQuality(b("136889400"), "128")), "https://api.octavestreaming.com/api/track/136889400?quality=128");
+  assert.equal(s(octaveResolveUrlWithQuality(b("136889400"), "lossless")), "https://api.octavestreaming.com/api/track/136889400?quality=lossless");
   assert.equal(s(octaveLyricsUrl()), "https://api.octavestreaming.com/api/lyrics");
 });
 
