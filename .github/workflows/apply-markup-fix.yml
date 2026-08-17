@@ -15,26 +15,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feat/native-octave-client
-      - name: Rename compiled-module keyword field
+      - name: Export model-reachable named records
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          core = Path('src/core.ts')
-          s = core.read_text()
-          s = s.replace('readonly error: Bytes;', 'readonly errorText: Bytes;')
-          s = s.replace('error: new Uint8Array(0)', 'errorText: new Uint8Array(0)')
-          s = s.replace('error: asciiBytes(', 'errorText: asciiBytes(')
-          s = s.replace('error: msg.reason', 'errorText: msg.reason')
-          core.write_text(s)
-          view = Path('src/app.native')
-          v = view.read_text().replace('{error}', '{errorText}')
-          view.write_text(v)
+          p = Path('src/core.ts')
+          s = p.read_text().replace('interface Draft {', 'export interface Draft {')
+          p.write_text(s)
           PY
       - name: Commit patch
         run: |
           git config user.name "spotify-ci"
           git config user.email "spotify-ci@users.noreply.github.com"
-          git add src/core.ts src/app.native
+          git add src/core.ts
           git diff --cached --quiet && exit 0
-          git commit -m "fix: rename native facade error field"
+          git commit -m "fix: export native model draft record"
           git push origin HEAD:feat/native-octave-client
