@@ -7,7 +7,7 @@ export type Page = "home" | "search" | "library" | "lyrics" | "queue";
 export type RepeatMode = "off" | "context" | "one";
 export type SearchPhase = "idle" | "debouncing" | "loading_octave" | "loading_fallback" | "ready" | "failed";
 
-interface Draft {
+export interface Draft {
   readonly bytes: Bytes;
   readonly anchor: number;
   readonly focus: number;
