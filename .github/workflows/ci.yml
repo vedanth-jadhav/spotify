@@ -1,9 +1,6 @@
 name: Native verification
 
 on:
-  push:
-    branches: [main, "feat/**"]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -14,19 +11,19 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.16.0
-      - run: npm install
+      - run: npm ci
       - name: Native subset + markup validation
-        run: npx native check --yes
+        run: npx --no-install native check --yes
       - name: State and provider tests
-        run: node --test --experimental-strip-types tests/*.test.ts
+        run: npm run test:unit
       - name: Native SDK tests
-        run: npx native test --yes
+        run: npx --no-install native test --yes
       - name: Release build
-        run: npx native build --yes
+        run: npx --no-install native build --yes
       - name: WebView and source-size performance budget
         run: node scripts/perf-budget.mjs
       - name: Octave public surface smoke test
@@ -36,12 +33,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.16.0
-      - run: npm install
+      - run: npm ci
       - run: npm audit --audit-level=high
       - run: node scripts/secret-scan.mjs
-
-# Final pre-merge gate on the binding-fixed source head.

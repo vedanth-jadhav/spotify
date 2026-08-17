@@ -2,9 +2,10 @@ name: Capture native app screenshot
 
 on:
   workflow_dispatch:
-  push:
-    branches: ["feat/native-octave-client"]
-    paths: [".github/workflows/screenshot.yml"]
+
+concurrency:
+  group: native-screenshot-feat-native-octave-client
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -14,19 +15,19 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: feat/native-octave-client
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.16.0
-      - run: npm install
+      - run: npm ci
       - name: Validate native sources
-        run: npx native check --yes
+        run: npx --no-install native check --yes
       - name: Clean generated caches
         run: rm -rf .native/build .zig-cache zig-out
       - name: Build with automation
-        run: npx native build --yes -Dautomation=true
+        run: npx --no-install native build --yes -Dautomation=true
       - name: Use dark reference appearance
         shell: bash
         run: |
@@ -37,10 +38,10 @@ jobs:
         run: |
           ./zig-out/bin/spotify > /tmp/spotify-native.log 2>&1 &
           echo $! > /tmp/spotify-native.pid
-          npx native automate wait
-          npx native automate resize 1440 900 1
-          npx native automate snapshot
-          CAPTURE="$(npx native automate screenshot spotify-canvas 1 | tail -1)"
+          npx --no-install native automate wait
+          npx --no-install native automate resize 1440 900 1
+          npx --no-install native automate snapshot
+          CAPTURE="$(npx --no-install native automate screenshot spotify-canvas 1 | tail -1)"
           test -s "$CAPTURE"
           mkdir -p docs/screenshots
           cp "$CAPTURE" docs/screenshots/home.png
