@@ -143,8 +143,13 @@ function navigate(model: Model, page: Page): Model {
   return { ...model, page: page, history: [...kept, page], historyIndex: kept.length };
 }
 
+function wholeId(value: number): number {
+  return value >= 0 && value <= 9007199254740991 ? Math.trunc(value) : 0;
+}
+
 function trackById(model: Model, id: number): Track | undefined {
-  return model.tracks.find((track) => track.id === id);
+  const wanted = wholeId(id);
+  return model.tracks.find((track) => wholeId(track.id) === wanted);
 }
 
 function currentTrack(model: Model): Track | undefined {
@@ -152,47 +157,59 @@ function currentTrack(model: Model): Track | undefined {
 }
 
 function isLiked(model: Model, id: number): boolean {
-  return model.likedIds.includes(id);
+  return model.likedIds.includes(wholeId(id));
 }
 
 function nextId(model: Model): number {
-  if (model.queue.length > 0) return model.queue[0].id;
+  if (model.queue.length > 0) return wholeId(model.queue[0].id);
   if (model.tracks.length === 0) return 0;
-  const at = model.tracks.findIndex((track) => track.id === model.nowId);
-  if (at < 0) return model.tracks[0].id;
-  if (model.repeat === "one") return model.nowId;
+  const now = wholeId(model.nowId);
+  const atRaw = model.tracks.findIndex((track) => wholeId(track.id) === now);
+  const at = atRaw >= 0 && atRaw <= 9007199254740991 ? Math.trunc(atRaw) : -1;
+  if (at < 0) return wholeId(model.tracks[0].id);
+  if (model.repeat === "one") return now;
   if (model.shuffle && model.tracks.length > 1) {
-    const candidate = (at * 1103515245 + 12345 + model.positionMs) % model.tracks.length;
-    const index = candidate === at ? (candidate + 1) % model.tracks.length : candidate;
-    return model.tracks[index].id;
+    let index = at + 2;
+    while (index >= model.tracks.length) index -= model.tracks.length;
+    if (index === at) {
+      index = at + 1;
+      if (index >= model.tracks.length) index = 0;
+    }
+    return wholeId(model.tracks[index].id);
   }
-  if (at + 1 < model.tracks.length) return model.tracks[at + 1].id;
-  return model.repeat === "context" ? model.tracks[0].id : 0;
+  if (at + 1 < model.tracks.length) return wholeId(model.tracks[at + 1].id);
+  return model.repeat === "context" ? wholeId(model.tracks[0].id) : 0;
 }
 
 function previousId(model: Model): number {
   if (model.tracks.length === 0) return 0;
-  const at = model.tracks.findIndex((track) => track.id === model.nowId);
-  if (at <= 0) return model.repeat === "context" ? model.tracks[model.tracks.length - 1].id : model.tracks[0].id;
-  return model.tracks[at - 1].id;
+  const now = wholeId(model.nowId);
+  const atRaw = model.tracks.findIndex((track) => wholeId(track.id) === now);
+  const at = atRaw >= 0 && atRaw <= 9007199254740991 ? Math.trunc(atRaw) : -1;
+  if (at <= 0) return model.repeat === "context" ? wholeId(model.tracks[model.tracks.length - 1].id) : wholeId(model.tracks[0].id);
+  return wholeId(model.tracks[at - 1].id);
 }
 
 function dequeue(model: Model, id: number): readonly QueueItem[] {
-  if (model.queue.length > 0 && model.queue[0].id === id) return model.queue.slice(1);
+  const wanted = wholeId(id);
+  if (model.queue.length > 0 && wholeId(model.queue[0].id) === wanted) return model.queue.slice(1);
   return model.queue;
 }
 
 function startTrack(model: Model, track: Track, fallback: boolean): Model {
+  const id = wholeId(track.id);
+  const secondsRaw = track.durationSec;
+  const seconds = secondsRaw >= 0 && secondsRaw <= 86400 ? Math.trunc(secondsRaw) : 0;
   return {
     ...model,
-    nowId: track.id,
-    queue: dequeue(model, track.id),
+    nowId: id,
+    queue: dequeue(model, id),
     playing: true,
     buffering: false,
     loadPending: true,
     fallbackPlayback: fallback,
     positionMs: 0,
-    durationMs: track.durationSec * 1000,
+    durationMs: seconds * 1000,
     error: new Uint8Array(0),
   };
 }
@@ -202,7 +219,7 @@ function playCommand(track: Track, fallback: boolean): Cmd<Msg> {
 }
 
 function startById(model: Model, id: number): [Model, Cmd<Msg>] {
-  const track = trackById(model, id);
+  const track = trackById(model, wholeId(id));
   if (track === undefined) return [model, Cmd.none];
   return [startTrack(model, track, false), playCommand(track, false)];
 }
@@ -255,9 +272,9 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return [{ ...model, tracks: parsed, searchPhase: "ready", error: new Uint8Array(0) }, Cmd.none];
     }
     case "fallback_search_failed": return [{ ...model, tracks: [], searchPhase: "failed", error: msg.reason }, Cmd.none];
-    case "play_track": return startById(model, msg.playTrackId);
+    case "play_track": return startById(model, wholeId(msg.playTrackId));
     case "toggle_play": {
-      if (model.nowId === 0) return model.tracks.length > 0 ? startById(model, model.tracks[0].id) : [model, Cmd.none];
+      if (model.nowId === 0) return model.tracks.length > 0 ? startById(model, wholeId(model.tracks[0].id)) : [model, Cmd.none];
       if (model.playing) return [{ ...model, playing: false }, Cmd.audioPause("player")];
       return [{ ...model, playing: true }, Cmd.audioResume("player")];
     }
@@ -271,12 +288,15 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return id === 0 ? [model, Cmd.none] : startById(model, id);
     }
     case "queue_track": {
-      if (model.queue.length >= MAX_QUEUE || model.queue.find((item) => item.id === msg.queueTrackId) !== undefined) return [model, Cmd.none];
-      return [{ ...model, queue: [...model.queue, { id: msg.queueTrackId }] }, Cmd.none];
+      const id = wholeId(msg.queueTrackId);
+      if (id === 0 || model.queue.length >= MAX_QUEUE || model.queue.find((item) => wholeId(item.id) === id) !== undefined) return [model, Cmd.none];
+      return [{ ...model, queue: [...model.queue, { id: id }] }, Cmd.none];
     }
     case "toggle_like": {
-      const exists = model.likedIds.includes(msg.likeTrackId);
-      return [{ ...model, likedIds: exists ? model.likedIds.filter((id) => id !== msg.likeTrackId) : [...model.likedIds, msg.likeTrackId] }, Cmd.none];
+      const id = wholeId(msg.likeTrackId);
+      if (id === 0) return [model, Cmd.none];
+      const exists = model.likedIds.includes(id);
+      return [{ ...model, likedIds: exists ? model.likedIds.filter((likedId) => likedId !== id) : [...model.likedIds, id] }, Cmd.none];
     }
     case "toggle_shuffle": return [{ ...model, shuffle: !model.shuffle }, Cmd.none];
     case "cycle_repeat": return [{ ...model, repeat: model.repeat === "off" ? "context" : model.repeat === "context" ? "one" : "off" }, Cmd.none];
@@ -285,7 +305,11 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       let permille = 0;
       let acc = 0.001;
       while (permille < 1000 && acc <= msg.fraction) { acc += 0.001; permille += 1; }
-      const target = Math.trunc((model.durationMs / 1000) * permille);
+      let thousandth = 0;
+      let rest = model.durationMs;
+      while (rest >= 1000) { rest -= 1000; thousandth += 1; }
+      const scaled = thousandth * permille;
+      const target = scaled >= 0 && scaled <= 9007199254740991 ? Math.trunc(scaled) : 0;
       return [{ ...model, positionMs: target }, Cmd.audioSeek("player", target)];
     }
     case "volume_changed": {
@@ -296,12 +320,21 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
     }
     case "audio_event": {
       switch (msg.state) {
-        case "loaded": return [{ ...model, loadPending: false, playing: msg.playing, buffering: msg.buffering, positionMs: Math.trunc(msg.positionMs), durationMs: msg.durationMs > 0 ? Math.trunc(msg.durationMs) : model.durationMs }, Cmd.none];
+        case "loaded": {
+          const posRaw = msg.positionMs;
+          const durationRaw = msg.durationMs;
+          const pos = posRaw >= 0 && posRaw <= 9007199254740991 ? Math.trunc(posRaw) : 0;
+          const duration = durationRaw > 0 && durationRaw <= 9007199254740991 ? Math.trunc(durationRaw) : model.durationMs;
+          return [{ ...model, loadPending: false, playing: msg.playing, buffering: msg.buffering, positionMs: pos, durationMs: duration }, Cmd.none];
+        }
         case "position": {
           if (model.loadPending) return [model, Cmd.none];
-          const pos = Math.trunc(msg.positionMs);
+          const posRaw = msg.positionMs;
+          const durationRaw = msg.durationMs;
+          const pos = posRaw >= 0 && posRaw <= 9007199254740991 ? Math.trunc(posRaw) : 0;
+          const duration = durationRaw > 0 && durationRaw <= 9007199254740991 ? Math.trunc(durationRaw) : model.durationMs;
           if (model.playing && !msg.buffering && pos <= model.positionMs && model.positionMs - pos <= SNAP_MS) return [{ ...model, buffering: msg.buffering }, Cmd.none];
-          return [{ ...model, positionMs: pos, durationMs: msg.durationMs > 0 ? Math.trunc(msg.durationMs) : model.durationMs, buffering: msg.buffering }, Cmd.none];
+          return [{ ...model, positionMs: pos, durationMs: duration, buffering: msg.buffering }, Cmd.none];
         }
         case "spectrum": return [model, Cmd.none];
         case "completed": {
@@ -333,7 +366,10 @@ export function searchLoading(model: Model): boolean { return model.searchPhase 
 export function searchFailed(model: Model): boolean { return model.searchPhase === "failed"; }
 export function searchReady(model: Model): boolean { return model.searchPhase === "ready"; }
 export function trackRows(model: Model): readonly TrackRow[] {
-  return model.tracks.map((track) => ({ id: track.id, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: track.id === model.nowId, liked: isLiked(model, track.id) }));
+  return model.tracks.map((track) => {
+    const id = wholeId(track.id);
+    return { id: id, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: id === model.nowId, liked: isLiked(model, id) };
+  });
 }
 export function likedRows(model: Model): readonly TrackRow[] { return trackRows(model).filter((row) => row.liked); }
 export function queueRows(model: Model): readonly TrackRow[] { return model.queue.map((item) => trackRows(model).find((row) => row.id === item.id)).filter((row) => row !== undefined); }
