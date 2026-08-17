@@ -17,7 +17,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.16.0
-          cache: npm
       - run: npm install
       - name: Native subset + markup validation
         run: npx native check --yes
@@ -42,8 +41,4 @@ jobs:
           node-version: 22.16.0
       - run: npm install
       - run: npm audit --audit-level=high
-      - name: Reject obvious committed credentials
-        run: |
-          if grep -RInE '(api[_-]?key|secret|token)[[:space:]]*[:=][[:space:]]*["'"'][A-Za-z0-9_\-]{20,}' --exclude-dir=.git --exclude='*.md' .; then
-            echo 'Potential credential committed'; exit 1;
-          fi
+      - run: node scripts/secret-scan.mjs
