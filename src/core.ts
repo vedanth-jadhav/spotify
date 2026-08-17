@@ -144,7 +144,10 @@ function navigate(model: Model, page: Page): Model {
 }
 
 function trackById(model: Model, id: number): Track | undefined {
-  return model.tracks.find((track) => track.id === id);
+  if (id <= 0) return undefined;
+  const index = id - 1;
+  if (index < 0 || index >= model.tracks.length) return undefined;
+  return model.tracks[index];
 }
 
 function currentTrack(model: Model): Track | undefined {
@@ -156,49 +159,27 @@ function isLiked(model: Model, id: number): boolean {
 }
 
 function nextId(model: Model): number {
-  if (model.queue.length > 0) {
-    const raw = model.queue[0].id;
-    return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
-  }
+  if (model.queue.length > 0) return model.queue[0].id;
   if (model.tracks.length === 0) return 0;
-  const now = model.nowId;
-  const atRaw = model.tracks.findIndex((track) => track.id === now);
-  const at = atRaw >= 0 && atRaw <= 9007199254740991 ? Math.trunc(atRaw) : -1;
-  if (at < 0) {
-    const raw = model.tracks[0].id;
-    return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
-  }
-  if (model.repeat === "one") return now;
+  if (model.repeat === "one" && model.nowId > 0) return model.nowId;
+  if (model.nowId <= 0) return 1;
   if (model.shuffle && model.tracks.length > 1) {
-    let index = at + 2;
-    while (index >= model.tracks.length) index -= model.tracks.length;
-    if (index === at) {
-      index = at + 1;
-      if (index >= model.tracks.length) index = 0;
+    let next = model.nowId + 2;
+    while (next > model.tracks.length) next -= model.tracks.length;
+    if (next === model.nowId) {
+      next += 1;
+      if (next > model.tracks.length) next = 1;
     }
-    const raw = model.tracks[index].id;
-    return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
+    return next;
   }
-  if (at + 1 < model.tracks.length) {
-    const raw = model.tracks[at + 1].id;
-    return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
-  }
-  if (model.repeat !== "context") return 0;
-  const raw = model.tracks[0].id;
-  return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
+  if (model.nowId < model.tracks.length) return model.nowId + 1;
+  return model.repeat === "context" ? 1 : 0;
 }
 
 function previousId(model: Model): number {
   if (model.tracks.length === 0) return 0;
-  const now = model.nowId;
-  const atRaw = model.tracks.findIndex((track) => track.id === now);
-  const at = atRaw >= 0 && atRaw <= 9007199254740991 ? Math.trunc(atRaw) : -1;
-  if (at <= 0) {
-    const raw = model.repeat === "context" ? model.tracks[model.tracks.length - 1].id : model.tracks[0].id;
-    return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
-  }
-  const raw = model.tracks[at - 1].id;
-  return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
+  if (model.nowId <= 1) return model.repeat === "context" ? model.tracks.length : 1;
+  return model.nowId - 1;
 }
 
 function dequeue(model: Model, id: number): readonly QueueItem[] {
@@ -206,9 +187,7 @@ function dequeue(model: Model, id: number): readonly QueueItem[] {
   return model.queue;
 }
 
-function startTrack(model: Model, track: Track, fallback: boolean): Model {
-  const idRaw = track.id;
-  const id = idRaw >= 0 && idRaw <= 9007199254740991 ? Math.trunc(idRaw) : 0;
+function startTrack(model: Model, id: number, track: Track, fallback: boolean): Model {
   const secondsRaw = track.durationSec;
   const seconds = secondsRaw >= 0 && secondsRaw <= 86400 ? Math.trunc(secondsRaw) : 0;
   return {
@@ -232,7 +211,7 @@ function playCommand(track: Track, fallback: boolean): Cmd<Msg> {
 function startById(model: Model, id: number): [Model, Cmd<Msg>] {
   const track = trackById(model, id);
   if (track === undefined) return [model, Cmd.none];
-  return [startTrack(model, track, false), playCommand(track, false)];
+  return [startTrack(model, id, track, false), playCommand(track, false)];
 }
 
 export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
@@ -291,9 +270,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
     case "toggle_play": {
       if (model.nowId === 0) {
         if (model.tracks.length === 0) return [model, Cmd.none];
-        const raw = model.tracks[0].id;
-        const id = raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
-        return id === 0 ? [model, Cmd.none] : startById(model, id);
+        return startById(model, 1);
       }
       if (model.playing) return [{ ...model, playing: false }, Cmd.audioPause("player")];
       return [{ ...model, playing: true }, Cmd.audioResume("player")];
@@ -366,7 +343,7 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
         case "failed":
         case "rejected": {
           const track = currentTrack(model);
-          if (track !== undefined && !model.fallbackPlayback && track.fallbackPreviewUrl.length > 0) return [startTrack(model, track, true), playCommand(track, true)];
+          if (track !== undefined && !model.fallbackPlayback && track.fallbackPreviewUrl.length > 0) return [startTrack(model, model.nowId, track, true), playCommand(track, true)];
           return [{ ...model, playing: false, buffering: false, loadPending: false, error: asciiBytes("Playback unavailable for this track") }, Cmd.none];
         }
       }
@@ -388,9 +365,9 @@ export function searchLoading(model: Model): boolean { return model.searchPhase 
 export function searchFailed(model: Model): boolean { return model.searchPhase === "failed"; }
 export function searchReady(model: Model): boolean { return model.searchPhase === "ready"; }
 export function trackRows(model: Model): readonly TrackRow[] {
-  return model.tracks.map((track) => {
-    const raw = track.id;
-    const id = raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
+  return model.tracks.map((track, indexRaw) => {
+    const index = indexRaw >= 0 && indexRaw <= 9007199254740990 ? Math.trunc(indexRaw) : 0;
+    const id = index + 1;
     return { id: id, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: id === model.nowId, liked: isLiked(model, id) };
   });
 }
