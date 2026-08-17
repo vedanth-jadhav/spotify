@@ -143,13 +143,8 @@ function navigate(model: Model, page: Page): Model {
   return { ...model, page: page, history: [...kept, page], historyIndex: kept.length };
 }
 
-function wholeId(value: number): number {
-  return value >= 0 && value <= 9007199254740991 ? Math.trunc(value) : 0;
-}
-
 function trackById(model: Model, id: number): Track | undefined {
-  const wanted = wholeId(id);
-  return model.tracks.find((track) => wholeId(track.id) === wanted);
+  return model.tracks.find((track) => track.id === id);
 }
 
 function currentTrack(model: Model): Track | undefined {
@@ -157,16 +152,22 @@ function currentTrack(model: Model): Track | undefined {
 }
 
 function isLiked(model: Model, id: number): boolean {
-  return model.likedIds.includes(wholeId(id));
+  return model.likedIds.includes(id);
 }
 
 function nextId(model: Model): number {
-  if (model.queue.length > 0) return wholeId(model.queue[0].id);
+  if (model.queue.length > 0) {
+    const raw = model.queue[0].id;
+    return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
+  }
   if (model.tracks.length === 0) return 0;
-  const now = wholeId(model.nowId);
-  const atRaw = model.tracks.findIndex((track) => wholeId(track.id) === now);
+  const now = model.nowId;
+  const atRaw = model.tracks.findIndex((track) => track.id === now);
   const at = atRaw >= 0 && atRaw <= 9007199254740991 ? Math.trunc(atRaw) : -1;
-  if (at < 0) return wholeId(model.tracks[0].id);
+  if (at < 0) {
+    const raw = model.tracks[0].id;
+    return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
+  }
   if (model.repeat === "one") return now;
   if (model.shuffle && model.tracks.length > 1) {
     let index = at + 2;
@@ -175,29 +176,39 @@ function nextId(model: Model): number {
       index = at + 1;
       if (index >= model.tracks.length) index = 0;
     }
-    return wholeId(model.tracks[index].id);
+    const raw = model.tracks[index].id;
+    return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
   }
-  if (at + 1 < model.tracks.length) return wholeId(model.tracks[at + 1].id);
-  return model.repeat === "context" ? wholeId(model.tracks[0].id) : 0;
+  if (at + 1 < model.tracks.length) {
+    const raw = model.tracks[at + 1].id;
+    return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
+  }
+  if (model.repeat !== "context") return 0;
+  const raw = model.tracks[0].id;
+  return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
 }
 
 function previousId(model: Model): number {
   if (model.tracks.length === 0) return 0;
-  const now = wholeId(model.nowId);
-  const atRaw = model.tracks.findIndex((track) => wholeId(track.id) === now);
+  const now = model.nowId;
+  const atRaw = model.tracks.findIndex((track) => track.id === now);
   const at = atRaw >= 0 && atRaw <= 9007199254740991 ? Math.trunc(atRaw) : -1;
-  if (at <= 0) return model.repeat === "context" ? wholeId(model.tracks[model.tracks.length - 1].id) : wholeId(model.tracks[0].id);
-  return wholeId(model.tracks[at - 1].id);
+  if (at <= 0) {
+    const raw = model.repeat === "context" ? model.tracks[model.tracks.length - 1].id : model.tracks[0].id;
+    return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
+  }
+  const raw = model.tracks[at - 1].id;
+  return raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
 }
 
 function dequeue(model: Model, id: number): readonly QueueItem[] {
-  const wanted = wholeId(id);
-  if (model.queue.length > 0 && wholeId(model.queue[0].id) === wanted) return model.queue.slice(1);
+  if (model.queue.length > 0 && model.queue[0].id === id) return model.queue.slice(1);
   return model.queue;
 }
 
 function startTrack(model: Model, track: Track, fallback: boolean): Model {
-  const id = wholeId(track.id);
+  const idRaw = track.id;
+  const id = idRaw >= 0 && idRaw <= 9007199254740991 ? Math.trunc(idRaw) : 0;
   const secondsRaw = track.durationSec;
   const seconds = secondsRaw >= 0 && secondsRaw <= 86400 ? Math.trunc(secondsRaw) : 0;
   return {
@@ -219,7 +230,7 @@ function playCommand(track: Track, fallback: boolean): Cmd<Msg> {
 }
 
 function startById(model: Model, id: number): [Model, Cmd<Msg>] {
-  const track = trackById(model, wholeId(id));
+  const track = trackById(model, id);
   if (track === undefined) return [model, Cmd.none];
   return [startTrack(model, track, false), playCommand(track, false)];
 }
@@ -272,9 +283,18 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return [{ ...model, tracks: parsed, searchPhase: "ready", error: new Uint8Array(0) }, Cmd.none];
     }
     case "fallback_search_failed": return [{ ...model, tracks: [], searchPhase: "failed", error: msg.reason }, Cmd.none];
-    case "play_track": return startById(model, wholeId(msg.playTrackId));
+    case "play_track": {
+      const raw = msg.playTrackId;
+      const id = raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
+      return id === 0 ? [model, Cmd.none] : startById(model, id);
+    }
     case "toggle_play": {
-      if (model.nowId === 0) return model.tracks.length > 0 ? startById(model, wholeId(model.tracks[0].id)) : [model, Cmd.none];
+      if (model.nowId === 0) {
+        if (model.tracks.length === 0) return [model, Cmd.none];
+        const raw = model.tracks[0].id;
+        const id = raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
+        return id === 0 ? [model, Cmd.none] : startById(model, id);
+      }
       if (model.playing) return [{ ...model, playing: false }, Cmd.audioPause("player")];
       return [{ ...model, playing: true }, Cmd.audioResume("player")];
     }
@@ -288,12 +308,14 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return id === 0 ? [model, Cmd.none] : startById(model, id);
     }
     case "queue_track": {
-      const id = wholeId(msg.queueTrackId);
-      if (id === 0 || model.queue.length >= MAX_QUEUE || model.queue.find((item) => wholeId(item.id) === id) !== undefined) return [model, Cmd.none];
+      const raw = msg.queueTrackId;
+      const id = raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
+      if (id === 0 || model.queue.length >= MAX_QUEUE || model.queue.find((item) => item.id === id) !== undefined) return [model, Cmd.none];
       return [{ ...model, queue: [...model.queue, { id: id }] }, Cmd.none];
     }
     case "toggle_like": {
-      const id = wholeId(msg.likeTrackId);
+      const raw = msg.likeTrackId;
+      const id = raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
       if (id === 0) return [model, Cmd.none];
       const exists = model.likedIds.includes(id);
       return [{ ...model, likedIds: exists ? model.likedIds.filter((likedId) => likedId !== id) : [...model.likedIds, id] }, Cmd.none];
@@ -367,7 +389,8 @@ export function searchFailed(model: Model): boolean { return model.searchPhase =
 export function searchReady(model: Model): boolean { return model.searchPhase === "ready"; }
 export function trackRows(model: Model): readonly TrackRow[] {
   return model.tracks.map((track) => {
-    const id = wholeId(track.id);
+    const raw = track.id;
+    const id = raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
     return { id: id, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: id === model.nowId, liked: isLiked(model, id) };
   });
 }
