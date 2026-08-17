@@ -1008,10 +1008,35 @@ export function nowAlbum(model: Model): Bytes { const track = currentTrack(model
 export function nowLiked(model: Model): boolean { const track = currentTrack(model); return track !== undefined && trackIn(model.likedTracks, track); }
 export function playIcon(model: Model): Bytes { return model.playing ? asciiBytes("pause") : asciiBytes("play"); }
 export function repeatLabel(model: Model): Bytes { return model.repeat === "one" ? asciiBytes("Repeat 1") : model.repeat === "context" ? asciiBytes("Repeat") : asciiBytes("Repeat off"); }
-export function positionLabel(model: Model): Bytes { return formatSeconds(Math.trunc(model.positionMs / 1000)); }
-export function durationLabel(model: Model): Bytes { return formatSeconds(Math.trunc(model.durationMs / 1000)); }
-export function seekFraction(model: Model): number { return model.durationMs > 0 ? model.positionMs / model.durationMs : 0; }
-export function volumeFraction(model: Model): number { return model.volumePermille / 1000; }
+function formatMilliseconds(value: number): Bytes {
+  let rest = value >= 0 && value <= 86400000 ? Math.trunc(value) : 0;
+  let minutes = 0;
+  while (rest >= 60000) { rest -= 60000; minutes += 1; }
+  let seconds = 0;
+  while (rest >= 1000) { rest -= 1000; seconds += 1; }
+  return formatSeconds(minutes * 60 + seconds);
+}
+
+export function positionLabel(model: Model): Bytes { return formatMilliseconds(model.positionMs); }
+export function durationLabel(model: Model): Bytes { return formatMilliseconds(model.durationMs); }
+export function seekFraction(model: Model): number {
+  if (model.durationMs <= 0) return 0;
+  const scaledPosition = model.positionMs * 1000;
+  let steps = 0;
+  while (steps < 1000 && model.durationMs * (steps + 1) <= scaledPosition) steps += 1;
+  if (steps === 0) return 0;
+  let fraction = 0.001;
+  let i = 1;
+  while (i < steps) { fraction += 0.001; i += 1; }
+  return fraction;
+}
+export function volumeFraction(model: Model): number {
+  if (model.volumePermille <= 0) return 0;
+  let fraction = 0.001;
+  let i = 1;
+  while (i < model.volumePermille && i < 1000) { fraction += 0.001; i += 1; }
+  return fraction;
+}
 export function pageHome(model: Model): boolean { return model.page === "home"; }
 export function pageSearch(model: Model): boolean { return model.page === "search"; }
 export function pageLibrary(model: Model): boolean { return model.page === "library"; }

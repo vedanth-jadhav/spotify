@@ -64,19 +64,21 @@ export function percentEncode(input: Bytes): Bytes {
 }
 
 function decimalBytes(value: number): Bytes {
-  if (!(value >= 0) || value > 9007199254740991) return asciiBytes("0");
-  let n = Math.trunc(value);
-  if (n === 0) return asciiBytes("0");
-  const reversed = new Uint8Array(16);
-  let count = 0;
-  while (n > 0 && count < reversed.length) {
-    reversed[count] = 0x30 + (n % 10);
-    n = Math.trunc(n / 10);
-    count += 1;
-  }
-  const out = new Uint8Array(count);
-  for (let i = 0; i < count; i += 1) out[i] = reversed[count - i - 1];
-  return out;
+  let rest = value >= 0 && value <= 9999 ? Math.trunc(value) : 0;
+  const out = new Uint8Array(4);
+  let size = 0;
+  let thousands = 0;
+  while (rest >= 1000) { rest -= 1000; thousands += 1; }
+  let hundreds = 0;
+  while (rest >= 100) { rest -= 100; hundreds += 1; }
+  let tens = 0;
+  while (rest >= 10) { rest -= 10; tens += 1; }
+  if (thousands > 0) { out[size] = 0x30 + thousands; size += 1; }
+  if (size > 0 || hundreds > 0) { out[size] = 0x30 + hundreds; size += 1; }
+  if (size > 0 || tens > 0) { out[size] = 0x30 + tens; size += 1; }
+  out[size] = 0x30 + rest;
+  size += 1;
+  return out.slice(0, size);
 }
 
 /** Production routes extracted from Octave's deployed Next.js client. */
@@ -165,7 +167,15 @@ function jsonStringAfter(bytes: Bytes, key: Bytes, from: number): Bytes {
   return new Uint8Array(0);
 }
 
-function idBefore(bytes: Bytes, before: number): number {
+function unsignedBytesAt(bytes: Bytes, at: number): Bytes {
+  let start = at;
+  while (start < bytes.length && (bytes[start] === 0x20 || bytes[start] === 0x3a)) start += 1;
+  let end = start;
+  while (end < bytes.length && bytes[end] >= 0x30 && bytes[end] <= 0x39) end += 1;
+  return end > start ? bytes.slice(start, end) : new Uint8Array(0);
+}
+
+function idBefore(bytes: Bytes, before: number): Bytes {
   const key = asciiBytes("\"id\":");
   const start = Math.max(0, before - 180);
   let found = -1;
@@ -176,7 +186,7 @@ function idBefore(bytes: Bytes, before: number): number {
     found = next;
     cursor = next + key.length;
   }
-  return found < 0 ? 0 : parseUnsignedAt(bytes, found + key.length);
+  return found < 0 ? new Uint8Array(0) : unsignedBytesAt(bytes, found + key.length);
 }
 
 export function parseOctaveSearch(body: Bytes): readonly Track[] {
@@ -232,15 +242,15 @@ export function parseDeezerSearch(body: Bytes): readonly Track[] {
     const durationAt = findFrom(body, durationKey, titleAt);
     const previewAt = findFrom(body, previewKey, titleAt);
     if (artistAt < 0 || albumAt < 0 || durationAt < 0 || previewAt < 0) break;
-    const id = idBefore(body, titleAt);
+    const remoteId = idBefore(body, titleAt);
     const title = jsonStringAfter(body, titleKey, titleAt);
     const artist = jsonStringAfter(body, nameKey, artistAt);
     const album = jsonStringAfter(body, titleKey, albumAt);
     const cover = jsonStringAfter(body, coverKey, albumAt);
     const preview = jsonStringAfter(body, previewKey, previewAt);
     const duration = parseUnsignedAt(body, durationAt + durationKey.length);
-    if (id > 0 && title.length > 0) {
-      out.push({ remoteId: decimalBytes(id), title: title, artist: artist, album: album, durationSec: duration, coverUrl: cover, fallbackPreviewUrl: preview });
+    if (remoteId.length > 0 && title.length > 0) {
+      out.push({ remoteId: remoteId, title: title, artist: artist, album: album, durationSec: duration, coverUrl: cover, fallbackPreviewUrl: preview });
     }
     cursor = Math.max(previewAt + previewKey.length, titleAt + titleKey.length);
   }
@@ -254,9 +264,9 @@ export function parseOctaveResolve(body: Bytes): ResolvedTrack {
 }
 
 export function formatSeconds(value: number): Bytes {
-  const total = value >= 0 && value < 86400 ? Math.trunc(value) : 0;
-  const minutes = Math.trunc(total / 60);
-  const seconds = total % 60;
+  let seconds = value >= 0 && value < 86400 ? Math.trunc(value) : 0;
+  let minutes = 0;
+  while (seconds >= 60) { seconds -= 60; minutes += 1; }
   const left = decimalBytes(minutes);
   const right = seconds < 10 ? concatBytes(asciiBytes("0"), decimalBytes(seconds)) : decimalBytes(seconds);
   return concat3(left, asciiBytes(":"), right);
