@@ -16,9 +16,11 @@ jobs:
         with:
           node-version: 22.16.0
       - run: npm ci
-      - name: Locate generated core shim template
+      - name: Inspect ScriptC compiler package
         shell: bash
         run: |
           set -euo pipefail
-          grep -R -n -F "msg_tags and the message union disagree" node_modules/@scriptc node_modules/scriptc || true
-          grep -R -n -F "core_shim:" node_modules/@scriptc node_modules/scriptc | head -80 || true
+          echo '--- files ---'
+          find node_modules/@scriptc node_modules/scriptc -type f -maxdepth 5 -print | sort
+          echo '--- quota refs ---'
+          grep -R -n -E 'EvalBranchQuota|eval.*branch|tag_name|field\.name|msg_tags|union disagree|core_shim' node_modules/@scriptc node_modules/scriptc | head -200 || true
