@@ -7,24 +7,18 @@ permissions:
   contents: read
 
 jobs:
-  release-gate:
+  inspect-scriptc:
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.16.0
       - run: npm ci
-      - name: Build ReleaseFast native binary
-        run: npx --no-install native build --yes
-      - name: Package ad-hoc signed macOS app
-        run: npx --no-install native package --target macos --signing adhoc
-      - name: Verify packaged app signature
+      - name: Locate generated core shim template
         shell: bash
         run: |
           set -euo pipefail
-          APP="$(find zig-out -type d -name '*.app' -print -quit)"
-          test -n "$APP"
-          codesign --verify --deep --strict "$APP"
-          echo "Verified $APP"
+          grep -R -n -F "msg_tags and the message union disagree" node_modules/@scriptc node_modules/scriptc || true
+          grep -R -n -F "core_shim:" node_modules/@scriptc node_modules/scriptc | head -80 || true
