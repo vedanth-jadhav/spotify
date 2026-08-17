@@ -204,16 +204,6 @@ function startTrack(model: Model, id: number, track: Track, fallback: boolean): 
   };
 }
 
-function playCommand(track: Track, fallback: boolean): Cmd<Msg> {
-  return Cmd.audioPlay("player", { url: fallback ? track.fallbackPreviewUrl : track.streamUrl }, { event: "audio_event" });
-}
-
-function startById(model: Model, id: number): [Model, Cmd<Msg>] {
-  const track = trackById(model, id);
-  if (track === undefined) return [model, Cmd.none];
-  return [startTrack(model, id, track, false), playCommand(track, false)];
-}
-
 export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
   switch (msg.kind) {
     case "go_home": return [navigate(model, "home"), Cmd.none];
@@ -265,24 +255,35 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
     case "play_track": {
       const raw = msg.playTrackId;
       const id = raw >= 0 && raw <= 9007199254740991 ? Math.trunc(raw) : 0;
-      return id === 0 ? [model, Cmd.none] : startById(model, id);
+      if (id === 0) return [model, Cmd.none];
+      const track = trackById(model, id);
+      if (track === undefined) return [model, Cmd.none];
+      return [startTrack(model, id, track, false), Cmd.audioPlay("player", { url: track.streamUrl }, { event: "audio_event" })];
     }
     case "toggle_play": {
       if (model.nowId === 0) {
         if (model.tracks.length === 0) return [model, Cmd.none];
-        return startById(model, 1);
+        const track = trackById(model, 1);
+        if (track === undefined) return [model, Cmd.none];
+        return [startTrack(model, 1, track, false), Cmd.audioPlay("player", { url: track.streamUrl }, { event: "audio_event" })];
       }
       if (model.playing) return [{ ...model, playing: false }, Cmd.audioPause("player")];
       return [{ ...model, playing: true }, Cmd.audioResume("player")];
     }
     case "next_track": {
       const id = nextId(model);
-      return id === 0 ? [{ ...model, playing: false }, Cmd.audioStop("player")] : startById(model, id);
+      if (id === 0) return [{ ...model, playing: false }, Cmd.audioStop("player")];
+      const track = trackById(model, id);
+      if (track === undefined) return [{ ...model, playing: false }, Cmd.audioStop("player")];
+      return [startTrack(model, id, track, false), Cmd.audioPlay("player", { url: track.streamUrl }, { event: "audio_event" })];
     }
     case "prev_track": {
       if (model.positionMs > 4000) return [{ ...model, positionMs: 0 }, Cmd.audioSeek("player", 0)];
       const id = previousId(model);
-      return id === 0 ? [model, Cmd.none] : startById(model, id);
+      if (id === 0) return [model, Cmd.none];
+      const track = trackById(model, id);
+      if (track === undefined) return [model, Cmd.none];
+      return [startTrack(model, id, track, false), Cmd.audioPlay("player", { url: track.streamUrl }, { event: "audio_event" })];
     }
     case "queue_track": {
       const raw = msg.queueTrackId;
@@ -338,12 +339,15 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
         case "spectrum": return [model, Cmd.none];
         case "completed": {
           const id = nextId(model);
-          return id === 0 ? [{ ...model, playing: false, positionMs: model.durationMs }, Cmd.none] : startById(model, id);
+          if (id === 0) return [{ ...model, playing: false, positionMs: model.durationMs }, Cmd.none];
+          const track = trackById(model, id);
+          if (track === undefined) return [{ ...model, playing: false }, Cmd.none];
+          return [startTrack(model, id, track, false), Cmd.audioPlay("player", { url: track.streamUrl }, { event: "audio_event" })];
         }
         case "failed":
         case "rejected": {
           const track = currentTrack(model);
-          if (track !== undefined && !model.fallbackPlayback && track.fallbackPreviewUrl.length > 0) return [startTrack(model, model.nowId, track, true), playCommand(track, true)];
+          if (track !== undefined && !model.fallbackPlayback && track.fallbackPreviewUrl.length > 0) return [startTrack(model, model.nowId, track, true), Cmd.audioPlay("player", { url: track.fallbackPreviewUrl }, { event: "audio_event" })];
           return [{ ...model, playing: false, buffering: false, loadPending: false, error: asciiBytes("Playback unavailable for this track") }, Cmd.none];
         }
       }
