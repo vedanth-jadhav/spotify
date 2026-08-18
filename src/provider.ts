@@ -200,6 +200,43 @@ function idBefore(bytes: Bytes, before: number): Bytes {
   return found < 0 ? new Uint8Array(0) : unsignedBytesAt(bytes, found + key.length);
 }
 
+
+function jsonEscaped(input: Bytes): Bytes {
+  let extra = 0;
+  for (const ch of input) if (ch === 0x22 || ch === 0x5c || ch === 0x0a || ch === 0x0d || ch === 0x09) extra += 1;
+  const out = new Uint8Array(input.length + extra);
+  let at = 0;
+  for (const ch of input) {
+    if (ch === 0x22 || ch === 0x5c) { out[at] = 0x5c; out[at + 1] = ch; at += 2; }
+    else if (ch === 0x0a) { out[at] = 0x5c; out[at + 1] = 0x6e; at += 2; }
+    else if (ch === 0x0d) { out[at] = 0x5c; out[at + 1] = 0x72; at += 2; }
+    else if (ch === 0x09) { out[at] = 0x5c; out[at + 1] = 0x74; at += 2; }
+    else { out[at] = ch; at += 1; }
+  }
+  return out;
+}
+
+export function octaveLyricsBody(track: Track): Bytes {
+  const q = asciiBytes("\"");
+  const comma = asciiBytes(",");
+  const id = concat3(asciiBytes("{\"id\":"), q, concatBytes(jsonEscaped(track.remoteId), q));
+  const title = concat5(comma, asciiBytes("\"title\":"), q, jsonEscaped(track.title), q);
+  const artist = concat5(comma, asciiBytes("\"artist\":"), q, jsonEscaped(track.artist), q);
+  const album = concat5(comma, asciiBytes("\"album\":"), q, jsonEscaped(track.album), q);
+  const duration = concat3(comma, asciiBytes("\"duration\":"), decimalBytes(track.durationSec));
+  return concatBytes(concatBytes(concatBytes(id, title), concatBytes(artist, album)), concatBytes(duration, asciiBytes(",\"source\":\"deezer\"}")));
+}
+
+export function parseOctaveLyrics(body: Bytes): Bytes {
+  const synced = jsonStringAfter(body, asciiBytes("\"syncedLyrics\":"), 0);
+  if (synced.length > 0) return synced;
+  const plain = jsonStringAfter(body, asciiBytes("\"plainLyrics\":"), 0);
+  if (plain.length > 0) return plain;
+  const lyrics = jsonStringAfter(body, asciiBytes("\"lyrics\":"), 0);
+  if (lyrics.length > 0) return lyrics;
+  return jsonStringAfter(body, asciiBytes("\"text\":"), 0);
+}
+
 export function parseOctaveSearch(body: Bytes): readonly Track[] {
   const idKey = asciiBytes("\"id\":");
   const titleKey = asciiBytes("\"title\":");

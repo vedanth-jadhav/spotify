@@ -1,10 +1,10 @@
 import { Cmd, Sub, asciiBytes } from "@native-sdk/core";
 import { applyTextInputEvent, clampedInsertEvent, type TextEditState, type TextInputEvent } from "@native-sdk/core/text";
 import { type AudioState } from "@native-sdk/core/events";
-import { deezerSearchFallbackUrl, formatSeconds, octaveResolveUrlWithQuality, octaveSearchUrl, octaveTrackRadioUrl, octaveTrendingUrl, parseDeezerSearch, parseOctaveResolve, parseOctaveSearch, type Bytes, type OctaveQuality, type Track } from "./provider.ts";
+import { deezerSearchFallbackUrl, formatSeconds, octaveLyricsBody, octaveLyricsUrl, octaveResolveUrlWithQuality, octaveSearchUrl, octaveTrackRadioUrl, octaveTrendingUrl, parseDeezerSearch, parseOctaveLyrics, parseOctaveResolve, parseOctaveSearch, type Bytes, type OctaveQuality, type Track } from "./provider.ts";
 import { decodeState, encodeState, type PersistedState } from "./persistence.ts";
 
-export type Page = "home" | "search" | "library" | "lyrics" | "queue" | "settings" | "notifications" | "playlist" | "premium";
+export type Page = "home" | "search" | "library" | "lyrics" | "artist" | "queue" | "settings" | "notifications" | "playlist" | "premium";
 export type RepeatMode = "off" | "context" | "one";
 export type SearchPhase = "idle" | "debouncing" | "loading_octave" | "loading_fallback" | "ready" | "failed";
 export type ImageState =
@@ -56,6 +56,8 @@ export interface Model {
   readonly shuffle: boolean;
   readonly shuffleSeed: number;
   readonly repeat: RepeatMode;
+  readonly lyricsText: Bytes;
+  readonly lyricsLoading: boolean;
   readonly errorText: Bytes;
 }
 
@@ -74,6 +76,8 @@ export type Msg =
   | { readonly kind: "go_search" }
   | { readonly kind: "go_library" }
   | { readonly kind: "go_lyrics" }
+  | { readonly kind: "open_now_artist" }
+  | { readonly kind: "go_track_artist"; readonly artistTrackId: number }
   | { readonly kind: "go_queue" }
   | { readonly kind: "go_settings" }
   | { readonly kind: "go_notifications" }
@@ -96,6 +100,8 @@ export type Msg =
   | { readonly kind: "octave_search_failed"; readonly reason: Bytes }
   | { readonly kind: "fallback_search_done"; readonly status: number; readonly body: Bytes }
   | { readonly kind: "fallback_search_failed"; readonly reason: Bytes }
+  | { readonly kind: "lyrics_done"; readonly status: number; readonly body: Bytes }
+  | { readonly kind: "lyrics_failed"; readonly reason: Bytes }
   | { readonly kind: "resolve_track_done"; readonly status: number; readonly body: Bytes }
   | { readonly kind: "resolve_track_failed"; readonly reason: Bytes }
   | { readonly kind: "cover_done"; readonly id: number; readonly state: ImageState; readonly width: number; readonly height: number; readonly status: number }
@@ -140,7 +146,7 @@ export type Msg =
   | { readonly kind: "clock_tick"; readonly at: number };
 
 export const viewUnbound = [
-  "search_fire", "octave_search_done", "octave_search_failed", "fallback_search_done", "fallback_search_failed", "resolve_track_done", "resolve_track_failed", "cover_done", "radio_done", "radio_failed", "state_loaded", "state_load_failed", "state_saved", "state_save_failed", "audio_event", "clock_tick",
+  "search_fire", "octave_search_done", "octave_search_failed", "fallback_search_done", "fallback_search_failed", "lyrics_done", "lyrics_failed", "resolve_track_done", "resolve_track_failed", "cover_done", "radio_done", "radio_failed", "state_loaded", "state_load_failed", "state_saved", "state_save_failed", "audio_event", "clock_tick",
 ] as const;
 
 const MAX_SEARCH = 96;
@@ -229,6 +235,8 @@ export function freshModel(): Model {
     shuffle: false,
     shuffleSeed: 1,
     repeat: "off",
+    lyricsText: new Uint8Array(0),
+    lyricsLoading: false,
     errorText: new Uint8Array(0),
   };
 }
@@ -339,8 +347,17 @@ function startTrack(model: Model, id: number, track: Track, context: readonly Tr
     audioReady: false,
     positionMs: 0,
     durationMs: seconds * 1000,
+    lyricsText: sameTrack(model.nowTrack, track) ? model.lyricsText : new Uint8Array(0),
+    lyricsLoading: false,
     errorText: new Uint8Array(0),
   };
+}
+
+function artistModel(model: Model, track: Track): Model {
+  const q = track.artist;
+  const search = { bytes: q, anchor: 0, focus: 0, compStart: -1, compEnd: -1 };
+  const base = navigate(model, "artist");
+  return { ...base, search: search, searchPhase: "loading_octave", errorText: new Uint8Array(0) };
 }
 
 export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
@@ -348,7 +365,23 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
     case "go_home": return [navigate(model, "home"), Cmd.none];
     case "go_search": return [navigate(model, "search"), Cmd.none];
     case "go_library": return [navigate(model, "library"), Cmd.none];
-    case "go_lyrics": return [navigate(model, "lyrics"), Cmd.none];
+    case "go_lyrics": {
+      const track = currentTrack(model);
+      const next = navigate(model, "lyrics");
+      if (track === undefined) return [{ ...next, lyricsLoading: false, lyricsText: new Uint8Array(0) }, Cmd.none];
+      if (model.lyricsText.length > 0) return [next, Cmd.none];
+      return [{ ...next, lyricsLoading: true, lyricsText: new Uint8Array(0) }, Cmd.fetch({ url: octaveLyricsUrl(), method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: octaveLyricsBody(track), timeoutMs: 10000 }, { key: "lyrics", ok: "lyrics_done", err: "lyrics_failed" })];
+    }
+    case "open_now_artist": {
+      const track = currentTrack(model);
+      if (track === undefined) return [model, Cmd.none];
+      return [artistModel(model, track), Cmd.fetch({ url: octaveSearchUrl(track.artist), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "search", ok: "octave_search_done", err: "octave_search_failed" })];
+    }
+    case "go_track_artist": {
+      const track = trackById(model, msg.artistTrackId);
+      if (track === undefined) return [model, Cmd.none];
+      return [artistModel(model, track), Cmd.fetch({ url: octaveSearchUrl(track.artist), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "search", ok: "octave_search_done", err: "octave_search_failed" })];
+    }
     case "go_queue": return [navigate(model, "queue"), Cmd.none];
     case "go_settings": return [navigate(model, "settings"), Cmd.none];
     case "go_notifications": return [navigate(model, "notifications"), Cmd.none];
@@ -419,6 +452,11 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return [{ ...model, tracks: parsed, searchPhase: "ready", errorText: new Uint8Array(0) }, Cmd.none];
     }
     case "fallback_search_failed": return [{ ...model, tracks: [], searchPhase: "failed", errorText: msg.reason }, Cmd.none];
+    case "lyrics_done": {
+      const lyrics = msg.status >= 200 && msg.status < 300 ? parseOctaveLyrics(msg.body) : new Uint8Array(0);
+      return [{ ...model, lyricsText: lyrics.length > 0 ? lyrics : asciiBytes("Lyrics are not available for this track."), lyricsLoading: false }, Cmd.none];
+    }
+    case "lyrics_failed": return [{ ...model, lyricsText: asciiBytes("Lyrics are unavailable right now. Try again after starting the track."), lyricsLoading: false }, Cmd.none];
     case "resolve_track_done": {
       const track = currentTrack(model);
       if (track === undefined) return [{ ...model, playing: false, loadPending: false, audioReady: false }, Cmd.none];
@@ -921,6 +959,9 @@ export function pageHome(model: Model): boolean { return model.page === "home"; 
 export function pageSearch(model: Model): boolean { return model.page === "search"; }
 export function pageLibrary(model: Model): boolean { return model.page === "library"; }
 export function pageLyrics(model: Model): boolean { return model.page === "lyrics"; }
+export function pageArtist(model: Model): boolean { return model.page === "artist"; }
+export function artistName(model: Model): Bytes { return model.search.bytes.length > 0 ? model.search.bytes : nowArtist(model); }
+export function hasLyrics(model: Model): boolean { return model.lyricsText.length > 0; }
 export function pageQueue(model: Model): boolean { return model.page === "queue"; }
 export function pageSettings(model: Model): boolean { return model.page === "settings"; }
 export function pageNotifications(model: Model): boolean { return model.page === "notifications"; }
