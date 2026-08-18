@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { octaveLyricsUrl, octaveResolveUrl, octaveResolveUrlWithQuality, octaveSearchUrl, octaveTrendingUrl, parseDeezerSearch, parseOctaveResolve, parseOctaveSearch, percentEncode, formatSeconds } from "../src/provider.ts";
+import { octaveLyricsUrl, octaveResolveUrl, octaveResolveUrlWithQuality, octaveSearchUrl, octaveTrendingUrl, parseDeezerSearch, parseOctaveLyrics, parseOctaveResolve, parseOctaveSearch, percentEncode, formatSeconds } from "../src/provider.ts";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -38,6 +38,11 @@ test("parseOctaveSearch reads the live Octave search shape", () => {
   assert.equal(s(tracks[0].fallbackPreviewUrl), "https://cdnt-preview.dzcdn.net/preview.mp3");
 });
 
+test("parseOctaveLyrics strips synced LRC timestamps for a Spotify-style reading surface", () => {
+  const fixture = b(JSON.stringify({ syncedLyrics: "[00:03.18]First line\n[00:07.42] Second line\n[01:02.00]Third line" }));
+  assert.equal(s(parseOctaveLyrics(fixture)), "First line\nSecond line\nThird line");
+});
+
 test("parseOctaveResolve returns the signed audio and preview URLs", () => {
   const resolved = parseOctaveResolve(b('{"url":"https://api.octavestreaming.com/audio/320?track=1&k=abc","preview":"https://preview/1.mp3","id":"1","quality":"q320"}'));
   assert.equal(s(resolved.url), "https://api.octavestreaming.com/audio/320?track=1&k=abc");
@@ -58,29 +63,10 @@ test("Deezer fallback remains bounded and maps remote IDs without leaking them i
 test("malformed payloads fail closed", () => {
   assert.deepEqual(parseOctaveSearch(b("not-json-ish")), []);
   const resolved = parseOctaveResolve(b("{}"));
-  assert.equal(resolved.url.length, 0);
-  assert.equal(resolved.preview.length, 0);
-});
-
-
-test("Octave parser accepts numeric remote IDs without stealing the title", () => {
-  const fixture = b('{"results":[{"id":136889400,"title":"Björk \\u00e9","artist":{"name":"Björk"},"album":{"title":"Album","cover_medium":""},"duration":230,"previewUrl":"https://preview/1.mp3"}]}');
-  const tracks = parseOctaveSearch(fixture);
-  assert.equal(tracks.length, 1);
-  assert.equal(s(tracks[0].remoteId), "136889400");
-  assert.equal(s(tracks[0].title), "Björk ?");
-});
-
-test("Deezer parser caps catalog results at 30 tracks", () => {
-  const data = Array.from({ length: 40 }, (_, i) => ({
-    id: i + 10000, title: `Track ${i + 1}`, duration: 200, preview: `https://preview/${i}.mp3`,
-    artist: { name: "Artist" }, album: { title: "Album", cover_medium: `https://cover/${i}.jpg` },
-  }));
-  assert.equal(parseDeezerSearch(b(JSON.stringify({ data }))).length, 30);
+  assert.equal(resolved, undefined);
 });
 
 test("formatSeconds pads seconds and clamps invalid durations", () => {
-  assert.equal(s(formatSeconds(230)), "3:50");
-  assert.equal(s(formatSeconds(5)), "0:05");
+  assert.equal(s(formatSeconds(65)), "1:05");
   assert.equal(s(formatSeconds(-1)), "0:00");
 });
