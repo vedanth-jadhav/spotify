@@ -1,17 +1,10 @@
 import { Cmd, Sub, asciiBytes } from "@native-sdk/core";
 import { applyTextInputEvent, clampedInsertEvent, type TextEditState, type TextInputEvent } from "@native-sdk/core/text";
-import { type AudioState, type ThemeState } from "@native-sdk/core/events";
+import { type AudioState } from "@native-sdk/core/events";
 import { deezerSearchFallbackUrl, formatSeconds, octaveLyricsBody, octaveLyricsUrl, octaveResolveUrlWithQuality, octaveSearchUrl, octaveTrackRadioUrl, octaveTrendingUrl, parseDeezerSearch, parseOctaveLyrics, parseOctaveResolve, parseOctaveSearch, type Bytes, type OctaveQuality, type Track } from "./provider.ts";
 import { decodeState, encodeState, type PersistedState } from "./persistence.ts";
 
 export type Page = "home" | "search" | "library" | "lyrics" | "artist" | "queue" | "settings" | "notifications" | "playlist" | "premium";
-
-// Spotify is intentionally a fixed dark desktop experience. Keeping the scheme
-// model-owned also makes CI screenshots deterministic instead of inheriting the
-// runner account's macOS appearance.
-export function themeState(_model: Model): ThemeState {
-  return { pack: "geist", colorScheme: "dark", accent: "#1ED760" };
-}
 export type RepeatMode = "off" | "context" | "one";
 export type SearchPhase = "idle" | "debouncing" | "loading_octave" | "loading_fallback" | "ready" | "failed";
 export type ImageState =
