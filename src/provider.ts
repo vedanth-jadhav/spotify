@@ -269,10 +269,10 @@ export function parseOctaveLyrics(body: Bytes): Bytes {
   const synced = jsonStringAfter(body, asciiBytes("\"syncedLyrics\":"), 0);
   if (synced.length > 0) return stripLrcTimestamps(synced);
   const plain = jsonStringAfter(body, asciiBytes("\"plainLyrics\":"), 0);
-  if (plain.length > 0) return plain;
+  if (plain.length > 0) return stripLrcTimestamps(plain);
   const lyrics = jsonStringAfter(body, asciiBytes("\"lyrics\":"), 0);
-  if (lyrics.length > 0) return lyrics;
-  return jsonStringAfter(body, asciiBytes("\"text\":"), 0);
+  if (lyrics.length > 0) return stripLrcTimestamps(lyrics);
+  return stripLrcTimestamps(jsonStringAfter(body, asciiBytes("\"text\":"), 0));
 }
 
 export function parseOctaveSearch(body: Bytes): readonly Track[] {

@@ -43,6 +43,11 @@ test("parseOctaveLyrics strips synced LRC timestamps for a Spotify-style reading
   assert.equal(s(parseOctaveLyrics(fixture)), "First line\nSecond line\nThird line");
 });
 
+test("parseOctaveLyrics also strips timestamps from legacy lyrics fallback payloads", () => {
+  const fixture = b(JSON.stringify({ lyrics: "[00:01.00]Fallback line\n[00:04.25]Next line" }));
+  assert.equal(s(parseOctaveLyrics(fixture)), "Fallback line\nNext line");
+});
+
 test("parseOctaveResolve returns the signed audio and preview URLs", () => {
   const resolved = parseOctaveResolve(b('{"url":"https://api.octavestreaming.com/audio/320?track=1&k=abc","preview":"https://preview/1.mp3","id":"1","quality":"q320"}'));
   assert.equal(s(resolved.url), "https://api.octavestreaming.com/audio/320?track=1&k=abc");
