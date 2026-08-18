@@ -25,9 +25,10 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.16.0
-      - name: Apply runtime-safe layout corrections
+      - name: Restore verified feature core and runtime-safe layout
         shell: bash
         run: |
+          git checkout ee242bfb13f06a8f5471f6e8d9905e648b778a8c -- src/core.ts
           python3 - <<'PY'
           from pathlib import Path
           p = Path('src/app.native')
@@ -46,6 +47,8 @@ jobs:
           p.write_text(s)
           PY
       - run: npm ci
+      - name: Reset generated model state
+        run: rm -rf .native/build .native/generated .native/cache .zig-cache zig-out
       - name: Static validation
         run: npx --no-install native check --yes
       - name: Full tests
@@ -91,7 +94,7 @@ jobs:
         run: |
           git config user.name "spotify-ci"
           git config user.email "spotify-ci@users.noreply.github.com"
-          git add src/app.native docs/screenshots/home.png
+          git add src/core.ts src/app.native docs/screenshots/home.png
           git diff --cached --quiet && exit 0
-          git commit -m "fix: render Spotify UI correctly at runtime"
+          git commit -m "fix: verify dark Spotify runtime"
           git push origin HEAD:fix/spotify-ui-recursive
