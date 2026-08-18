@@ -1,18 +1,13 @@
 name: Recursive Spotify UI verifier
-
 on:
   push:
-    branches:
-      - fix/spotify-ui-recursive
+    branches: [fix/spotify-ui-recursive]
   workflow_dispatch:
-
 concurrency:
   group: recursive-spotify-ui-verifier
   cancel-in-progress: true
-
 permissions:
   contents: write
-
 jobs:
   verify-and-capture:
     runs-on: macos-15
@@ -25,133 +20,69 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.16.0
-      - name: Apply Spotify visual refinements
+      - name: Apply visual refinements
         shell: bash
         run: |
           git checkout ee242bfb13f06a8f5471f6e8d9905e648b778a8c -- src/core.ts
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('src/app.native')
-          s = p.read_text()
-          replacements = {
-              'padding="0 8 8 8"': 'padding="8"',
-              'padding="0 12 10 12"': 'padding="10"',
-              'padding="8 14"': 'padding="10"',
-              'padding="4 8 12 8"': 'padding="8"',
-              'padding="20 24 26 24"': 'padding="24"',
-              'padding="0 8"': 'padding="8"',
-              'padding="20 24 30 24"': 'padding="24"',
-              '<row height="64" padding="8" gap="8" cross="center" label="Spotify header">': '<row height="56" padding="8" gap="8" cross="center" label="Spotify header">',
-              '<button size="icon" variant="secondary" on-press="go_home" label="Home">H</button>': '<button size="icon" variant="secondary" on-press="go_home" label="Home">⌂</button>',
-              '<row padding="10" gap="8"><badge variant="secondary">Playlists</badge><badge variant="secondary">Artists</badge></row>': '<row padding="10" gap="8"><badge variant="secondary">Playlists</badge><badge variant="secondary">Podcasts</badge><badge variant="secondary">Artists</badge></row>',
-              '>Recents</text>': '>Recently added</text>',
-              '<panel width="310" background="surface" radius="lg" label="Now playing">': '<panel width="330" background="surface" radius="lg" label="Now playing">',
-              '<row height="92" padding="12" gap="12" cross="center" label="Now playing bar">': '<row height="84" padding="12" gap="12" cross="center" label="Now playing bar">',
-          }
-          for old, new in replacements.items():
-              s = s.replace(old, new)
+          p=Path('src/app.native'); s=p.read_text()
+          for a,b in {
+            'padding="0 8 8 8"':'padding="8"','padding="0 12 10 12"':'padding="10"',
+            'padding="8 14"':'padding="10"','padding="4 8 12 8"':'padding="8"',
+            'padding="20 24 26 24"':'padding="24"','padding="0 8"':'padding="8"',
+            'padding="20 24 30 24"':'padding="24"',
+            '<row height="64" padding="8" gap="8" cross="center" label="Spotify header">':'<row height="56" padding="8" gap="8" cross="center" label="Spotify header">',
+            '<row padding="10" gap="8"><badge variant="secondary">Playlists</badge><badge variant="secondary">Artists</badge></row>':'<row padding="10" gap="8"><badge variant="secondary">Playlists</badge><badge variant="secondary">Podcasts</badge><badge variant="secondary">Artists</badge></row>',
+            '>Recents</text>':'>Recently added</text>',
+            '<panel width="310" background="surface" radius="lg" label="Now playing">':'<panel width="330" background="surface" radius="lg" label="Now playing">',
+            '<row height="92" padding="12" gap="12" cross="center" label="Now playing bar">':'<row height="84" padding="12" gap="12" cross="center" label="Now playing bar">'
+          }.items(): s=s.replace(a,b)
           p.write_text(s)
           PY
       - run: npm ci
-      - name: Reset generated model state
-        run: rm -rf .native/build .native/generated .native/cache .zig-cache zig-out
+      - run: rm -rf .native/build .native/generated .native/cache .zig-cache zig-out
       - name: Static validation
         run: npx --no-install native check --yes
       - name: Build automation binary
         run: npx --no-install native build --yes -Dautomation=true
-      - name: Use dark appearance
-        shell: bash
-        run: |
-          defaults write -g AppleInterfaceStyle Dark
-          killall cfprefsd || true
-      - name: Launch, validate, and capture Spotify surfaces
+      - name: Dark appearance
+        run: defaults write -g AppleInterfaceStyle Dark; killall cfprefsd || true
+      - name: Capture key surfaces
         shell: bash
         run: |
           set -euo pipefail
-          ./zig-out/bin/spotify > /tmp/spotify-native.log 2>&1 &
-          echo $! > /tmp/spotify-native.pid
+          ./zig-out/bin/spotify >/tmp/spotify.log 2>&1 & echo $! >/tmp/spotify.pid
           npx --no-install native automate wait
           npx --no-install native automate resize 1440 900 1
-          sleep 1
-          mkdir -p docs/screenshots
-
-          snapshot() {
-            npx --no-install native automate snapshot | tee /tmp/spotify-snapshot.txt >/dev/null
-            if grep -q "MarkupBuild" /tmp/spotify-snapshot.txt || grep -q "markup view failed to build" /tmp/spotify-native.log; then
-              cat /tmp/spotify-native.log || true
-              exit 1
-            fi
-          }
-          id_for() {
-            local role="$1" name="$2"
-            grep -m1 "role=${role} name=\"${name}\"" /tmp/spotify-snapshot.txt | sed -E 's/.*#([0-9]+) role=.*/\1/' || true
-          }
-          click_named() {
-            local role="$1" name="$2"
-            snapshot
-            local id
-            id="$(id_for "$role" "$name")"
+          sleep 1; mkdir -p docs/screenshots
+          snap(){ npx --no-install native automate snapshot | tee /tmp/snap >/dev/null; ! grep -q MarkupBuild /tmp/snap; ! grep -q 'markup view failed' /tmp/spotify.log; }
+          wid(){ grep -m1 "role=$1 name=\"$2\"" /tmp/snap | sed -E 's/.*#([0-9]+) role=.*/\1/' || true; }
+          click(){ snap; id="$(wid "$1" "$2")"; test -n "$id" || return 1; npx --no-install native automate widget-click spotify-canvas "$id"; sleep 1; }
+          shot(){ snap; f="$(npx --no-install native automate screenshot spotify-canvas 1 | tail -1)"; test -s "$f"; cp "$f" "docs/screenshots/$1.png"; }
+          shot home
+          click listitem 'Liked Songs' && shot liked-songs || true
+          click button Home || true
+          if click button 'Create playlist'; then click listitem 'My Playlist' && shot playlist || true; fi
+          click button Home || true
+          if click listitem 'Trending now'; then
+            sleep 4; shot search; snap
+            id="$(grep 'role=listitem' /tmp/snap | grep -v 'name=\"Liked Songs\"' | grep -v 'name=\"My Playlist\"' | head -1 | sed -E 's/.*#([0-9]+) role=.*/\1/' || true)"
             if test -n "$id"; then
-              npx --no-install native automate widget-click spotify-canvas "$id"
-              sleep 1
-              return 0
-            fi
-            echo "Skipping missing widget: $role / $name"
-            return 1
-          }
-          capture() {
-            local name="$1"
-            snapshot
-            local path
-            path="$(npx --no-install native automate screenshot spotify-canvas 1 | tail -1)"
-            test -s "$path"
-            cp "$path" "docs/screenshots/${name}.png"
-          }
-
-          capture home
-
-          if click_named listitem "Liked Songs"; then
-            capture liked-songs
-          fi
-
-          click_named button "Home" || true
-          if click_named button "Create playlist"; then
-            if click_named listitem "My Playlist"; then
-              capture playlist
-            fi
-          fi
-
-          click_named button "Home" || true
-          if click_named listitem "Trending now"; then
-            sleep 4
-            capture search
-            snapshot
-            TRACK_ID="$(grep 'role=listitem' /tmp/spotify-snapshot.txt | grep -v 'name=\"Liked Songs\"' | grep -v 'name=\"My Playlist\"' | head -1 | sed -E 's/.*#([0-9]+) role=.*/\1/' || true)"
-            if test -n "$TRACK_ID"; then
-              npx --no-install native automate widget-click spotify-canvas "$TRACK_ID" || true
-              sleep 4
-              if click_named button "Lyrics"; then
-                sleep 3
-                capture lyrics
-              fi
-              if click_named button "Open artist"; then
-                sleep 4
-                capture artist
-              fi
+              npx --no-install native automate widget-click spotify-canvas "$id" || true; sleep 4
+              click button Lyrics && sleep 2 && shot lyrics || true
+              click button 'Open artist' && sleep 4 && shot artist || true
             fi
           fi
       - name: Stop app
         if: always()
+        run: test ! -f /tmp/spotify.pid || kill "$(cat /tmp/spotify.pid)" || true
+      - name: Commit verified visuals
         shell: bash
         run: |
-          if test -f /tmp/spotify-native.pid; then kill "$(cat /tmp/spotify-native.pid)" || true; fi
-          if test -f /tmp/spotify-native.log; then tail -200 /tmp/spotify-native.log; fi
-      - name: Commit verified source and screenshots
-        shell: bash
-        run: |
-          git config user.name "spotify-ci"
-          git config user.email "spotify-ci@users.noreply.github.com"
+          git config user.name spotify-ci
+          git config user.email spotify-ci@users.noreply.github.com
           git add src/core.ts src/app.native docs/screenshots/*.png
           git diff --cached --quiet && exit 0
-          git commit -m "fix: refine Spotify desktop parity"
+          git commit -m 'fix: refine Spotify desktop parity'
           git push origin HEAD:fix/spotify-ui-recursive
