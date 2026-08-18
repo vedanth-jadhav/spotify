@@ -1,0 +1,140 @@
+name: Capture PR Spotify parity screens
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: macos-15
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/spotify-ui-ux-final
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.16.0
+      - run: npm ci
+      - run: npx --no-install native check --yes
+      - run: npm run test:unit
+      - run: rm -rf .native/build .native/generated .native/cache .zig-cache zig-out
+      - name: Build automation binary
+        run: npx --no-install native build --yes -Dautomation=true
+      - name: Use dark appearance
+        run: defaults write -g AppleInterfaceStyle Dark; killall cfprefsd || true
+
+      - name: Exercise populated Spotify flows and capture surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./zig-out/bin/spotify >/tmp/spotify.log 2>&1 & echo $! >/tmp/spotify.pid
+          npx --no-install native automate wait
+          npx --no-install native automate resize 1440 900 1
+          sleep 1
+          mkdir -p docs/screenshots
+
+          snap() {
+            npx --no-install native automate snapshot | tee /tmp/snap >/dev/null
+            ! grep -q MarkupBuild /tmp/snap
+            ! grep -q 'markup view failed' /tmp/spotify.log
+            grep -q 'dispatch_errors=0' /tmp/snap
+          }
+          wid() {
+            grep -m1 "role=$1 name=\"$2\"" /tmp/snap | sed -E 's/.*#([0-9]+) role=.*/\1/' || true
+          }
+          click() {
+            snap
+            local id
+            id="$(wid "$1" "$2")"
+            test -n "$id" || { echo "missing $1 '$2'" >&2; cat /tmp/snap >&2; return 1; }
+            npx --no-install native automate widget-click spotify-canvas "$id"
+            sleep 1
+          }
+          first_catalog_row() {
+            grep -m1 'role=listitem.*context_menu=' /tmp/snap | sed -E 's/.*#([0-9]+) role=.*/\1/' || true
+          }
+          menu_pick() {
+            snap
+            local id
+            id="$(first_catalog_row)"
+            test -n "$id"
+            npx --no-install native automate widget-context-menu spotify-canvas "$id" "$1"
+            sleep 1
+          }
+          play_first_catalog_row() {
+            snap
+            local id
+            id="$(first_catalog_row)"
+            test -n "$id"
+            npx --no-install native automate widget-click spotify-canvas "$id"
+            sleep 4
+          }
+          shot() {
+            snap
+            local f
+            f="$(npx --no-install native automate screenshot spotify-canvas 1 | tail -1)"
+            test -s "$f"
+            cp "$f" "docs/screenshots/$1.png"
+          }
+
+          # Home should resemble Spotify before a track starts: library + discovery, no empty right rail.
+          shot home
+
+          # Create a real local playlist, populate search, like and playlist the first result, then play it.
+          click button 'Create playlist' || true
+          click button Home || true
+          click listitem 'Trending now'
+          sleep 4
+          snap
+          test -n "$(first_catalog_row)"
+          menu_pick 2
+          menu_pick 3
+          play_first_catalog_row
+          shot search
+
+          # Verify Now Playing can be opened deliberately and is not forced empty on launch.
+          click button 'Now playing'
+          shot now-playing
+          click button Close
+
+          click listitem 'Liked Songs'
+          shot liked-songs
+          click listitem 'My Playlist'
+          shot playlist
+
+          # Lyrics must be an exclusive loading/content/error surface, never the old hint simultaneously.
+          click button Lyrics
+          sleep 3
+          shot lyrics
+          ! grep -Eq '\[[0-9][0-9]:' /tmp/snap
+          ! (grep -q 'Loading lyrics from Octave' /tmp/snap && grep -q 'Start a song, then open Lyrics' /tmp/snap)
+
+          # Navigate through the artist control from the active track and capture the artist surface.
+          click button 'View artist'
+          sleep 4
+          shot artist
+          grep -q 'Popular tracks' /tmp/snap || grep -q 'No results available' /tmp/snap
+
+          # Final runtime health assertion.
+          snap
+          grep -q 'dispatch_errors=0' /tmp/snap
+          ! grep -q MarkupBuild /tmp/snap
+          ! grep -q 'markup view failed' /tmp/spotify.log
+
+      - name: Stop app
+        if: always()
+        run: test ! -f /tmp/spotify.pid || kill "$(cat /tmp/spotify.pid)" || true
+
+      - name: Commit refreshed PR screenshots
+        shell: bash
+        run: |
+          git config user.name spotify-ci
+          git config user.email spotify-ci@users.noreply.github.com
+          git add docs/screenshots/home.png docs/screenshots/search.png docs/screenshots/now-playing.png docs/screenshots/liked-songs.png docs/screenshots/playlist.png docs/screenshots/lyrics.png docs/screenshots/artist.png
+          git diff --cached --quiet && exit 0
+          git commit -m 'docs: refresh verified Spotify parity screenshots'
+          git push origin HEAD:feat/spotify-ui-ux-final
