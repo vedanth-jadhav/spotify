@@ -1,6 +1,9 @@
 name: Capture PR Spotify parity screens
 
 on:
+  push:
+    branches: [feat/spotify-ui-ux-final]
+    paths: [.github/workflows/capture-pr-screens.yml]
   workflow_dispatch:
 
 permissions:
@@ -81,10 +84,7 @@ jobs:
             cp "$f" "docs/screenshots/$1.png"
           }
 
-          # Home should resemble Spotify before a track starts: library + discovery, no empty right rail.
           shot home
-
-          # Create a real local playlist, populate search, like and playlist the first result, then play it.
           click button 'Create playlist' || true
           click button Home || true
           click listitem 'Trending now'
@@ -96,7 +96,6 @@ jobs:
           play_first_catalog_row
           shot search
 
-          # Verify Now Playing can be opened deliberately and is not forced empty on launch.
           click button 'Now playing'
           shot now-playing
           click button Close
@@ -106,20 +105,17 @@ jobs:
           click listitem 'My Playlist'
           shot playlist
 
-          # Lyrics must be an exclusive loading/content/error surface, never the old hint simultaneously.
           click button Lyrics
           sleep 3
           shot lyrics
           ! grep -Eq '\[[0-9][0-9]:' /tmp/snap
           ! (grep -q 'Loading lyrics from Octave' /tmp/snap && grep -q 'Start a song, then open Lyrics' /tmp/snap)
 
-          # Navigate through the artist control from the active track and capture the artist surface.
           click button 'View artist'
           sleep 4
           shot artist
           grep -q 'Popular tracks' /tmp/snap || grep -q 'No results available' /tmp/snap
 
-          # Final runtime health assertion.
           snap
           grep -q 'dispatch_errors=0' /tmp/snap
           ! grep -q MarkupBuild /tmp/snap
