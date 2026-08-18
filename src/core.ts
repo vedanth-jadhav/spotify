@@ -38,6 +38,21 @@ export interface Model {
   readonly nowTrack: Track;
   readonly coverImage: number;
   readonly coverRequestId: number;
+  readonly artLiked: number;
+  readonly artPlaylist: number;
+  readonly artDiscover: number;
+  readonly artMix1: number;
+  readonly artMix2: number;
+  readonly artChill: number;
+  readonly artTrending: number;
+  readonly artRelease: number;
+  readonly artParty: number;
+  readonly artFocus: number;
+  readonly artWorkout: number;
+  readonly artClassical: number;
+  readonly artArtist: number;
+  readonly artPop: number;
+  readonly artHiphop: number;
   readonly queue: readonly QueueItem[];
   readonly showNowPlaying: boolean;
   readonly autoplay: boolean;
@@ -221,6 +236,21 @@ export function freshModel(): Model {
     nowTrack: emptyTrack(),
     coverImage: 0,
     coverRequestId: 0,
+    artLiked: 11,
+    artPlaylist: 12,
+    artDiscover: 13,
+    artMix1: 14,
+    artMix2: 15,
+    artChill: 16,
+    artTrending: 17,
+    artRelease: 18,
+    artParty: 19,
+    artFocus: 20,
+    artWorkout: 21,
+    artClassical: 22,
+    artArtist: 23,
+    artPop: 24,
+    artHiphop: 25,
     queue: [],
     showNowPlaying: false,
     autoplay: true,
