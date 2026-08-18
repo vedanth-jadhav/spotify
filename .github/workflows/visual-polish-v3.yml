@@ -13,11 +13,11 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 22
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/checkout@v4
         with:
           ref: feat/spotify-ui-ux-final
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288ca8642d1e84afbd3f7d6820020
+      - uses: actions/setup-node@v4
         with:
           node-version: 22.16.0
       - name: Apply ScriptC-safe visual pass
@@ -33,7 +33,6 @@ jobs:
           patch=patch.replace(unsupported, '# Native SDK 0.8.3 does not expose a built-in home icon.')
           exec(compile(gen,'generate-art.py','exec'))
 
-          # Redraw Liked Songs with a recognisable heart instead of a glyph-like placeholder.
           p=canvas((55,22,180),(145,220,222))
           white=(250,250,250)
           circle(p,120,126,58,white); circle(p,200,126,58,white)
@@ -48,8 +47,6 @@ jobs:
 
           exec(compile(patch,'visual-patch.py','exec'))
 
-          # ScriptC cannot currently prove a computed image id inside repeated row records.
-          # Keep real artwork on Spotify surfaces/heroes/cards and use the validated row glyphs.
           p=Path('src/core.ts'); s=p.read_text()
           s=s.replace('  readonly art: number;\n','',1)
           start=s.find('function rowArt(index: number): number {')
