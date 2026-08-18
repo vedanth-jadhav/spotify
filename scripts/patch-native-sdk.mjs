@@ -15,8 +15,11 @@ if (nativePackage.version !== "0.8.3") {
   throw new Error(`Native SDK compatibility patches are pinned to 0.8.3, found ${nativePackage.version}`);
 }
 
-const marker = "            \\comptime {{\n            \\    // The union and the tag table are emitted from one arm list;";
-const patchedMarker = "            \\comptime {{\n            \\    @setEvalBranchQuota(20_000);\n            \\    // The union and the tag table are emitted from one arm list;";
+const marker = String.raw`            \\comptime {{
+            \\    // The union and the tag table are emitted from one arm list;`;
+const patchedMarker = String.raw`            \\comptime {{
+            \\    @setEvalBranchQuota(20_000);
+            \\    // The union and the tag table are emitted from one arm list;`;
 
 let emitterSource = fs.readFileSync(emitterPath, "utf8");
 if (!emitterSource.includes(patchedMarker)) {
@@ -32,8 +35,8 @@ if (!emitterSource.includes(patchedMarker)) {
 
 // Spotify Desktop owns a permanently dark application chrome. Native SDK 0.8.3
 // otherwise follows the host OS appearance, which makes a Spotify clone flip to
-// a light theme on light-mode Macs and on CI runners. Preserve contrast and
-// reduced-motion from the host, but force only the color-scheme axis to dark.
+// a light theme on light-mode Macs and CI runners. Preserve contrast and reduced
+// motion from the host, but force only the color-scheme axis to dark.
 const defaultAppearance = "        system_appearance: platform.Appearance = .{},";
 const darkDefaultAppearance = "        system_appearance: platform.Appearance = .{ .color_scheme = .dark },";
 const appearanceAssignment = "                    self.system_appearance = appearance;";
