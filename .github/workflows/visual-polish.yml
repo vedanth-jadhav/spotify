@@ -1,0 +1,165 @@
+name: Apply Spotify visual artwork pass
+
+on:
+  push:
+    branches: [feat/spotify-ui-ux-final]
+    paths: [.github/workflows/visual-polish.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: macos-15
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/spotify-ui-ux-final
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.16.0
+      - name: Generate deterministic local artwork
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import math, struct, zlib
+
+          W=320; H=320
+          out=Path('assets/art'); out.mkdir(parents=True, exist_ok=True)
+
+          def chunk(t,d):
+              return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)
+          def save(name,p):
+              raw=b''.join(b'\x00'+bytes(p[y*W*3:(y+1)*W*3]) for y in range(H))
+              data=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',W,H,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(raw,9))+chunk(b'IEND',b'')
+              (out/name).write_bytes(data)
+          def canvas(c1,c2):
+              p=bytearray(W*H*3)
+              for y in range(H):
+                  for x in range(W):
+                      t=(x+y)/(W+H-2)
+                      i=(y*W+x)*3
+                      p[i]=int(c1[0]*(1-t)+c2[0]*t); p[i+1]=int(c1[1]*(1-t)+c2[1]*t); p[i+2]=int(c1[2]*(1-t)+c2[2]*t)
+              return p
+          def px(p,x,y,c):
+              if 0<=x<W and 0<=y<H:
+                  i=(y*W+x)*3; p[i:i+3]=bytes(c)
+          def rect(p,x0,y0,x1,y1,c):
+              for y in range(max(0,y0),min(H,y1)):
+                  for x in range(max(0,x0),min(W,x1)): px(p,x,y,c)
+          def circle(p,cx,cy,r,c):
+              rr=r*r
+              for y in range(max(0,cy-r),min(H,cy+r+1)):
+                  for x in range(max(0,cx-r),min(W,cx+r+1)):
+                      if (x-cx)**2+(y-cy)**2<=rr: px(p,x,y,c)
+          def ring(p,cx,cy,r,w,c):
+              o=r*r; inn=max(0,r-w)**2
+              for y in range(max(0,cy-r),min(H,cy+r+1)):
+                  for x in range(max(0,cx-r),min(W,cx+r+1)):
+                      d=(x-cx)**2+(y-cy)**2
+                      if inn<=d<=o: px(p,x,y,c)
+          def diag(p,c,width,phase=0):
+              for y in range(H):
+                  for x in range(W):
+                      if ((x+y+phase)//width)%2==0 and ((x+y+phase)%width)<max(2,width//5): px(p,x,y,c)
+          def heart(p,cx,cy,s,c):
+              for y in range(cy-s,cy+s+1):
+                  for x in range(cx-s,cy+s+1):
+                      xn=(x-cx)/s; yn=-(y-cy)/s
+                      q=(xn*xn+yn*yn-1)**3-xn*xn*yn*yn*yn
+                      if q<=0: px(p,x,y,c)
+
+          p=canvas((55,22,180),(145,220,222)); heart(p,160,158,82,(250,250,250)); save('liked.png',p)
+
+          p=canvas((18,18,22),(35,35,40));
+          rect(p,18,18,154,154,(232,52,71)); circle(p,88,86,42,(250,196,55));
+          rect(p,166,18,302,154,(30,112,250)); ring(p,234,86,46,12,(245,245,245));
+          rect(p,18,166,154,302,(76,205,134)); diag(p,(15,75,50),34,7);
+          rect(p,166,166,302,302,(214,64,198)); circle(p,230,230,54,(38,25,45)); circle(p,258,258,24,(250,250,250)); save('playlist.png',p)
+
+          p=canvas((10,10,14),(34,34,44)); ring(p,160,160,105,18,(230,230,230)); ring(p,160,160,72,10,(95,225,125)); ring(p,160,160,40,8,(245,90,120)); circle(p,160,160,12,(245,245,245)); save('discover.png',p)
+          p=canvas((19,96,220),(14,15,22)); circle(p,155,138,96,(245,166,112)); circle(p,155,138,70,(42,52,80)); rect(p,58,232,270,300,(18,18,24)); diag(p,(50,225,135),26,5); save('mix1.png',p)
+          p=canvas((243,115,34),(71,20,13)); circle(p,94,112,62,(22,22,26)); circle(p,230,216,92,(244,194,42)); ring(p,230,216,54,18,(110,23,42)); diag(p,(255,235,210),38,13); save('mix2.png',p)
+          p=canvas((190,255,38),(35,78,24)); circle(p,225,98,68,(235,250,135)); rect(p,0,202,320,320,(15,32,25)); ring(p,106,232,86,18,(117,210,158)); save('chill.png',p)
+          p=canvas((231,50,44),(111,12,19)); circle(p,160,160,112,(245,107,38)); circle(p,160,160,70,(38,21,28)); diag(p,(255,215,62),24,3); save('trending.png',p)
+          p=canvas((26,58,166),(15,180,144)); ring(p,160,160,112,24,(245,245,245)); ring(p,160,160,68,15,(18,24,35)); circle(p,160,160,24,(245,96,90)); save('release.png',p)
+          p=canvas((210,32,166),(248,95,47)); circle(p,82,90,46,(255,230,70)); circle(p,236,204,74,(54,15,77)); diag(p,(245,245,245),42,17); save('party.png',p)
+          p=canvas((65,36,145),(21,50,94)); circle(p,160,160,110,(92,69,180)); circle(p,160,160,68,(18,24,55)); circle(p,160,160,12,(239,239,242)); save('focus.png',p)
+          p=canvas((219,37,45),(18,18,21)); rect(p,44,40,98,280,(245,245,245)); rect(p,122,40,176,280,(32,32,36)); rect(p,200,40,254,280,(245,188,35)); diag(p,(120,0,20),30,4); save('workout.png',p)
+          p=canvas((238,225,188),(89,65,54)); circle(p,160,160,108,(30,30,31)); circle(p,160,160,75,(226,205,157)); circle(p,160,160,24,(70,50,42)); save('classical.png',p)
+          p=canvas((20,29,55),(70,19,40)); circle(p,160,132,78,(206,154,118)); rect(p,72,196,248,320,(20,20,24)); ring(p,160,132,92,8,(224,58,91)); save('artist.png',p)
+          p=canvas((255,74,152),(129,31,193)); circle(p,225,90,70,(255,219,53)); rect(p,34,180,270,252,(39,19,55)); save('pop.png',p)
+          p=canvas((226,104,27),(32,28,29)); diag(p,(250,190,38),36,8); circle(p,92,102,58,(31,31,35)); ring(p,226,220,70,18,(235,68,56)); save('hiphop.png',p)
+          PY
+
+      - name: Register artwork and polish native surfaces
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p=Path('app.zon'); s=p.read_text()
+          anchor='    .theme_accent = "#1ED760",\n'
+          assets='''    .assets = .{\n        .images = .{\n            .{ .id = 11, .path = "assets/art/liked.png" },\n            .{ .id = 12, .path = "assets/art/playlist.png" },\n            .{ .id = 13, .path = "assets/art/discover.png" },\n            .{ .id = 14, .path = "assets/art/mix1.png" },\n            .{ .id = 15, .path = "assets/art/mix2.png" },\n            .{ .id = 16, .path = "assets/art/chill.png" },\n            .{ .id = 17, .path = "assets/art/trending.png" },\n            .{ .id = 18, .path = "assets/art/release.png" },\n            .{ .id = 19, .path = "assets/art/party.png" },\n            .{ .id = 20, .path = "assets/art/focus.png" },\n            .{ .id = 21, .path = "assets/art/workout.png" },\n            .{ .id = 22, .path = "assets/art/classical.png" },\n            .{ .id = 23, .path = "assets/art/artist.png" },\n            .{ .id = 24, .path = "assets/art/pop.png" },\n            .{ .id = 25, .path = "assets/art/hiphop.png" },\n        },\n    },\n'''
+          if '.assets = .{' not in s: s=s.replace(anchor,anchor+assets,1)
+          p.write_text(s)
+
+          p=Path('src/core.ts'); s=p.read_text()
+          s=s.replace('''  readonly coverImage: number;\n  readonly coverRequestId: number;\n  readonly queue: readonly QueueItem[];''','''  readonly coverImage: number;\n  readonly coverRequestId: number;\n  readonly artLiked: number;\n  readonly artPlaylist: number;\n  readonly artDiscover: number;\n  readonly artMix1: number;\n  readonly artMix2: number;\n  readonly artChill: number;\n  readonly artTrending: number;\n  readonly artRelease: number;\n  readonly artParty: number;\n  readonly artFocus: number;\n  readonly artWorkout: number;\n  readonly artClassical: number;\n  readonly artArtist: number;\n  readonly artPop: number;\n  readonly artHiphop: number;\n  readonly queue: readonly QueueItem[];''',1)
+          s=s.replace('''  readonly duration: Bytes;\n  readonly active: boolean;\n  readonly liked: boolean;''','''  readonly duration: Bytes;\n  readonly art: number;\n  readonly active: boolean;\n  readonly liked: boolean;''',1)
+          s=s.replace('''    coverImage: 0,\n    coverRequestId: 0,\n    queue: [],''','''    coverImage: 0,\n    coverRequestId: 0,\n    artLiked: 11,\n    artPlaylist: 12,\n    artDiscover: 13,\n    artMix1: 14,\n    artMix2: 15,\n    artChill: 16,\n    artTrending: 17,\n    artRelease: 18,\n    artParty: 19,\n    artFocus: 20,\n    artWorkout: 21,\n    artClassical: 22,\n    artArtist: 23,\n    artPop: 24,\n    artHiphop: 25,\n    queue: [],''',1)
+          marker='export function trackRows(model: Model): readonly TrackRow[] {'
+          helper='''function rowArt(index: number): number {\n  const bucket = index % 6;\n  if (bucket === 0) return 17;\n  if (bucket === 1) return 14;\n  if (bucket === 2) return 15;\n  if (bucket === 3) return 16;\n  if (bucket === 4) return 24;\n  return 25;\n}\n\n'''
+          if 'function rowArt(' not in s: s=s.replace(marker,helper+marker,1)
+          s=s.replace('''return { id: id, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: sameTrack(track, model.nowTrack), liked: isLiked(model, id) };''','''return { id: id, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), art: rowArt(index), active: sameTrack(track, model.nowTrack), liked: isLiked(model, id) };''')
+          s=s.replace('''return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: sameTrack(track, model.nowTrack), liked: true };''','''return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), art: rowArt(index), active: sameTrack(track, model.nowTrack), liked: true };''')
+          s=s.replace('''return { id: index + 1, title: item.track.title, artist: item.track.artist, album: item.track.album, duration: formatSeconds(item.track.durationSec), active: sameTrack(item.track, model.nowTrack), liked: trackIn(model.likedTracks, item.track) };''','''return { id: index + 1, title: item.track.title, artist: item.track.artist, album: item.track.album, duration: formatSeconds(item.track.durationSec), art: rowArt(index), active: sameTrack(item.track, model.nowTrack), liked: trackIn(model.likedTracks, item.track) };''')
+          s=s.replace('''return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: sameTrack(track, model.nowTrack), liked: trackIn(model.likedTracks, track) };''','''return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), art: rowArt(index), active: sameTrack(track, model.nowTrack), liked: trackIn(model.likedTracks, track) };''')
+          p.write_text(s)
+
+          p=Path('src/app.native'); s=p.read_text()
+          s=s.replace('<button size="icon" variant="secondary" on-press="go_home" label="Home">H</button>','<button size="icon" variant="secondary" icon="home" on-press="go_home" label="Home"></button>',1)
+          s=s.replace('<panel width="48" height="48" radius="sm" background="accent"><row grow="1" main="center" cross="center"><icon name="check-circle" width="24" height="24"></icon></row></panel>','<image image="{artLiked}" width="48" height="48" label="Liked Songs artwork" />',1)
+          s=s.replace('<panel width="48" height="48" radius="sm" background="surface_pressed"><row grow="1" main="center" cross="center"><icon name="music" width="22" height="22"></icon></row></panel>','<image image="{artPlaylist}" width="48" height="48" label="My Playlist artwork" />',1)
+          s=s.replace('<panel width="44" height="44" radius="sm" background="surface_pressed"><row grow="1" main="center" cross="center"><icon name="music" width="18" height="18" foreground="text_muted"></icon></row></panel>','<image image="{t.art}" width="44" height="44" label="{t.title}" />')
+
+          home_old='''<grid columns="2" gap="8"><list-item height="66" background="surface_pressed" radius="sm" padding="8" gap="12" cross="center" on-press="go_library" label="Liked Songs"><panel width="50" height="50" radius="sm" background="accent"><row grow="1" main="center" cross="center"><icon name="check-circle" width="22" height="22"></icon></row></panel><text>Liked Songs</text></list-item><list-item height="66" background="surface_pressed" radius="sm" padding="8" gap="12" cross="center" on-press="search_trending" label="Trending now"><panel width="50" height="50" radius="sm" background="surface_subtle"><row grow="1" main="center" cross="center"><icon name="music" width="22" height="22"></icon></row></panel><text>Trending now</text></list-item><list-item height="66" background="surface_pressed" radius="sm" padding="8" gap="12" cross="center" on-press="search_pop" label="Daily Mix 1"><panel width="50" height="50" radius="sm" background="surface_subtle"><row grow="1" main="center" cross="center"><icon name="shuffle" width="22" height="22"></icon></row></panel><text>Daily Mix 1</text></list-item><list-item height="66" background="surface_pressed" radius="sm" padding="8" gap="12" cross="center" on-press="search_indie" label="Release Radar"><panel width="50" height="50" radius="sm" background="surface_subtle"><row grow="1" main="center" cross="center"><icon name="refresh-cw" width="22" height="22"></icon></row></panel><text>Release Radar</text></list-item></grid>'''
+          home_new='''<grid columns="2" gap="8"><list-item height="66" background="surface_pressed" radius="sm" padding="8" gap="12" cross="center" on-press="go_library" label="Liked Songs"><image image="{artLiked}" width="50" height="50" label="Liked Songs artwork" /><text>Liked Songs</text></list-item><list-item height="66" background="surface_pressed" radius="sm" padding="8" gap="12" cross="center" on-press="search_trending" label="Trending now"><image image="{artTrending}" width="50" height="50" label="Trending artwork" /><text>Trending now</text></list-item><list-item height="66" background="surface_pressed" radius="sm" padding="8" gap="12" cross="center" on-press="search_pop" label="Daily Mix 1"><image image="{artMix1}" width="50" height="50" label="Daily Mix 1 artwork" /><text>Daily Mix 1</text></list-item><list-item height="66" background="surface_pressed" radius="sm" padding="8" gap="12" cross="center" on-press="search_indie" label="Release Radar"><image image="{artRelease}" width="50" height="50" label="Release Radar artwork" /><text>Release Radar</text></list-item><list-item height="66" background="surface_pressed" radius="sm" padding="8" gap="12" cross="center" on-press="search_hiphop" label="Daily Mix 2"><image image="{artMix2}" width="50" height="50" label="Daily Mix 2 artwork" /><text>Daily Mix 2</text></list-item><list-item height="66" background="surface_pressed" radius="sm" padding="8" gap="12" cross="center" on-press="search_chill" label="Chill Mix"><image image="{artChill}" width="50" height="50" label="Chill Mix artwork" /><text>Chill Mix</text></list-item></grid>'''
+          if home_old not in s: raise SystemExit('home quick grid anchor missing')
+          s=s.replace(home_old,home_new,1)
+
+          replacements={
+          '<panel height="146" radius="md" background="surface_pressed"><row grow="1" main="center" cross="center"><icon name="music" width="48" height="48"></icon></row></panel><text>Discover Weekly</text>':'<image image="{artDiscover}" width="146" height="146" label="Discover Weekly artwork" /><text>Discover Weekly</text>',
+          '<panel height="146" radius="md" background="surface_pressed"><row grow="1" main="center" cross="center"><icon name="shuffle" width="48" height="48"></icon></row></panel><text>Daily Mix 1</text>':'<image image="{artMix1}" width="146" height="146" label="Daily Mix 1 artwork" /><text>Daily Mix 1</text>',
+          '<panel height="146" radius="md" background="surface_pressed"><row grow="1" main="center" cross="center"><icon name="music" width="48" height="48"></icon></row></panel><text>Daily Mix 2</text>':'<image image="{artMix2}" width="146" height="146" label="Daily Mix 2 artwork" /><text>Daily Mix 2</text>',
+          '<panel height="146" radius="md" background="surface_pressed"><row grow="1" main="center" cross="center"><icon name="circle-dot" width="48" height="48"></icon></row></panel><text>Chill Mix</text>':'<image image="{artChill}" width="146" height="146" label="Chill Mix artwork" /><text>Chill Mix</text>',
+          '<panel height="120" background="surface_pressed" radius="md"><row grow="1" main="center" cross="center"><icon name="music" width="38" height="38"></icon></row></panel><text>Party</text>':'<image image="{artParty}" width="120" height="120" label="Party artwork" /><text>Party</text>',
+          '<panel height="120" background="surface_pressed" radius="md"><row grow="1" main="center" cross="center"><icon name="circle-dot" width="38" height="38"></icon></row></panel><text>Focus</text>':'<image image="{artFocus}" width="120" height="120" label="Focus artwork" /><text>Focus</text>',
+          '<panel height="120" background="surface_pressed" radius="md"><row grow="1" main="center" cross="center"><icon name="shuffle" width="38" height="38"></icon></row></panel><text>Workout</text>':'<image image="{artWorkout}" width="120" height="120" label="Workout artwork" /><text>Workout</text>',
+          '<panel height="120" background="surface_pressed" radius="md"><row grow="1" main="center" cross="center"><icon name="music" width="38" height="38"></icon></row></panel><text>Classical</text>':'<image image="{artClassical}" width="120" height="120" label="Classical artwork" /><text>Classical</text>',
+          '<panel width="48" height="48" radius="sm" background="surface_pressed"><row grow="1" main="center" cross="center"><icon name="music" width="18" height="18"></icon></row></panel>':'<image image="{t.art}" width="48" height="48" label="{t.title}" />',
+          '<panel width="190" height="190" radius="md" background="accent"><row grow="1" main="center" cross="center"><icon name="check-circle" width="76" height="76"></icon></row></panel>':'<image image="{artLiked}" width="190" height="190" label="Liked Songs artwork" />',
+          '<panel width="190" height="190" radius="md" background="surface_subtle"><row grow="1" main="center" cross="center"><icon name="music" width="72" height="72"></icon></row></panel>':'<image image="{artPlaylist}" width="190" height="190" label="My Playlist artwork" />',
+          '<panel height="300" padding="28" background="surface_pressed"><column grow="1" main="end" gap="10"><text size="sm">Artist</text><text><span scale="2.7">{artistName}</span></text><text foreground="text_muted">Artist · Octave catalog</text></column></panel>':'<panel height="300" padding="28" background="surface_pressed"><row grow="1" gap="24" cross="end"><image image="{artArtist}" width="220" height="220" label="Artist artwork" /><column grow="1" main="end" gap="10"><text size="sm">Artist</text><text><span scale="2.7">{artistName}</span></text><text foreground="text_muted">Artist · Octave catalog</text></column></row></panel>'
+          }
+          for a,b in replacements.items(): s=s.replace(a,b)
+
+          browse_old='<grid columns="2" gap="12"><list-item height="116" padding="18" background="surface_pressed" radius="lg" on-press="search_pop" label="Pop"><column gap="5"><text><span scale="1.25">Pop</span></text><text foreground="text_muted">Big songs and new releases</text></column></list-item><list-item height="116" padding="18" background="surface_pressed" radius="lg" on-press="search_hiphop" label="Hip-Hop"><column gap="5"><text><span scale="1.25">Hip-Hop</span></text><text foreground="text_muted">Rap, hip-hop and R&amp;B</text></column></list-item><list-item height="116" padding="18" background="surface_pressed" radius="lg" on-press="search_chill" label="Chill"><column gap="5"><text><span scale="1.25">Chill</span></text><text foreground="text_muted">Slow down and unwind</text></column></list-item><list-item height="116" padding="18" background="surface_pressed" radius="lg" on-press="search_trending" label="Trending"><column gap="5"><text><span scale="1.25">Trending</span></text><text foreground="text_muted">What people are playing</text></column></list-item></grid>'
+          browse_new='<grid columns="2" gap="12"><list-item height="136" padding="14" background="surface_pressed" radius="lg" on-press="search_pop" label="Pop"><row gap="14" cross="center"><image image="{artPop}" width="104" height="104" label="Pop artwork" /><column grow="1" gap="5"><text><span scale="1.25">Pop</span></text><text foreground="text_muted">Big songs and new releases</text></column></row></list-item><list-item height="136" padding="14" background="surface_pressed" radius="lg" on-press="search_hiphop" label="Hip-Hop"><row gap="14" cross="center"><image image="{artHiphop}" width="104" height="104" label="Hip-Hop artwork" /><column grow="1" gap="5"><text><span scale="1.25">Hip-Hop</span></text><text foreground="text_muted">Rap, hip-hop and R&amp;B</text></column></row></list-item><list-item height="136" padding="14" background="surface_pressed" radius="lg" on-press="search_chill" label="Chill"><row gap="14" cross="center"><image image="{artChill}" width="104" height="104" label="Chill artwork" /><column grow="1" gap="5"><text><span scale="1.25">Chill</span></text><text foreground="text_muted">Slow down and unwind</text></column></row></list-item><list-item height="136" padding="14" background="surface_pressed" radius="lg" on-press="search_trending" label="Trending"><row gap="14" cross="center"><image image="{artTrending}" width="104" height="104" label="Trending artwork" /><column grow="1" gap="5"><text><span scale="1.25">Trending</span></text><text foreground="text_muted">What people are playing</text></column></row></list-item><list-item height="136" padding="14" background="surface_pressed" radius="lg" on-press="search_workout" label="Workout"><row gap="14" cross="center"><image image="{artWorkout}" width="104" height="104" label="Workout artwork" /><column grow="1" gap="5"><text><span scale="1.25">Workout</span></text><text foreground="text_muted">Energy for every session</text></column></row></list-item><list-item height="136" padding="14" background="surface_pressed" radius="lg" on-press="search_classical" label="Classical"><row gap="14" cross="center"><image image="{artClassical}" width="104" height="104" label="Classical artwork" /><column grow="1" gap="5"><text><span scale="1.25">Classical</span></text><text foreground="text_muted">Timeless works and calm</text></column></row></list-item></grid>'
+          if browse_old not in s: raise SystemExit('browse grid anchor missing')
+          s=s.replace(browse_old,browse_new,1)
+          p.write_text(s)
+          PY
+
+      - run: npm ci
+      - run: npx --no-install native check --yes
+      - run: npm run test:unit
+      - run: npx --no-install native test --yes
+      - name: Commit visual artwork pass
+        run: |
+          git config user.name spotify-ci
+          git config user.email spotify-ci@users.noreply.github.com
+          git add app.zon src/core.ts src/app.native assets/art
+          git commit -m 'feat: add Spotify-style native artwork and denser surfaces'
+          git push origin HEAD:feat/spotify-ui-ux-final
