@@ -1,17 +1,21 @@
 name: Recursive Spotify UI verifier
+
 on:
   push:
     branches: [fix/spotify-ui-recursive]
   workflow_dispatch:
+
 concurrency:
   group: recursive-spotify-ui-verifier
   cancel-in-progress: true
+
 permissions:
   contents: write
+
 jobs:
   verify-and-capture:
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 22
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -20,27 +24,62 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.16.0
-      - name: Apply visual refinements
+
+      - name: Restore verified feature core and apply final product fixes
         shell: bash
         run: |
-          git checkout ee242bfb13f06a8f5471f6e8d9905e648b778a8c -- src/core.ts
+          set -euo pipefail
+          FEATURE=ee242bfb13f06a8f5471f6e8d9905e648b778a8c
+          git checkout "$FEATURE" -- src/core.ts src/provider.ts tests/provider.test.ts
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('src/app.native'); s=p.read_text()
-          for a,b in {
-            'padding="0 8 8 8"':'padding="8"','padding="0 12 10 12"':'padding="10"',
-            'padding="8 14"':'padding="10"','padding="4 8 12 8"':'padding="8"',
-            'padding="20 24 26 24"':'padding="24"','padding="0 8"':'padding="8"',
+
+          app = Path('src/app.native')
+          s = app.read_text()
+          for old, new in {
+            'padding="0 8 8 8"':'padding="8"',
+            'padding="0 12 10 12"':'padding="10"',
+            'padding="8 14"':'padding="10"',
+            'padding="4 8 12 8"':'padding="8"',
+            'padding="20 24 26 24"':'padding="24"',
+            'padding="0 8"':'padding="8"',
             'padding="20 24 30 24"':'padding="24"',
             '<row height="64" padding="8" gap="8" cross="center" label="Spotify header">':'<row height="56" padding="8" gap="8" cross="center" label="Spotify header">',
             '<row padding="10" gap="8"><badge variant="secondary">Playlists</badge><badge variant="secondary">Artists</badge></row>':'<row padding="10" gap="8"><badge variant="secondary">Playlists</badge><badge variant="secondary">Podcasts</badge><badge variant="secondary">Artists</badge></row>',
             '>Recents</text>':'>Recently added</text>',
             '<panel width="310" background="surface" radius="lg" label="Now playing">':'<panel width="330" background="surface" radius="lg" label="Now playing">',
-            '<row height="92" padding="12" gap="12" cross="center" label="Now playing bar">':'<row height="84" padding="12" gap="12" cross="center" label="Now playing bar">'
-          }.items(): s=s.replace(a,b)
-          p.write_text(s)
+            '<row height="92" padding="12" gap="12" cross="center" label="Now playing bar">':'<row height="84" padding="12" gap="12" cross="center" label="Now playing bar">',
+          }.items():
+            s = s.replace(old, new)
+          app.write_text(s)
+
+          provider = Path('src/provider.ts')
+          s = provider.read_text()
+          parse_anchor = '''export function parseOctaveLyrics(body: Bytes): Bytes {\n  const synced = jsonStringAfter(body, asciiBytes("\\\"syncedLyrics\\\":"), 0);\n  if (synced.length > 0) return synced;\n'''
+          helper = '''function isLrcTimestampTag(input: Bytes, start: number, end: number): boolean {\n  if (end <= start + 1 || end - start > 18) return false;\n  let sawColon = false;\n  let sawDigit = false;\n  for (let i = start + 1; i < end; i += 1) {\n    const ch = input[i];\n    if (ch >= 0x30 && ch <= 0x39) { sawDigit = true; continue; }\n    if (ch === 0x3a) { sawColon = true; continue; }\n    if (ch === 0x2e) continue;\n    return false;\n  }\n  return sawDigit && sawColon;\n}\n\nexport function stripLrcTimestamps(input: Bytes): Bytes {\n  if (input.length === 0) return input;\n  const out = new Uint8Array(input.length);\n  let size = 0;\n  let i = 0;\n  while (i < input.length) {\n    if (input[i] === 0x5b) {\n      let close = i + 1;\n      let limit = i + 20;\n      if (limit > input.length) limit = input.length;\n      while (close < limit && input[close] !== 0x5d) close += 1;\n      if (close < limit && input[close] === 0x5d && isLrcTimestampTag(input, i, close)) {\n        i = close + 1;\n        if (i < input.length && input[i] === 0x20) i += 1;\n        continue;\n      }\n    }\n    out[size] = input[i];\n    size += 1;\n    i += 1;\n  }\n  return out.slice(0, size);\n}\n\nexport function parseOctaveLyrics(body: Bytes): Bytes {\n  const synced = jsonStringAfter(body, asciiBytes("\\\"syncedLyrics\\\":"), 0);\n  if (synced.length > 0) return stripLrcTimestamps(synced);\n'''
+          if parse_anchor not in s:
+            raise SystemExit('verified lyrics parser anchor changed')
+          s = s.replace(parse_anchor, helper)
+          provider.write_text(s)
+
+          test = Path('tests/provider.test.ts')
+          s = test.read_text()
+          old_import = 'parseDeezerSearch, parseOctaveResolve, parseOctaveSearch, percentEncode, formatSeconds'
+          new_import = 'parseDeezerSearch, parseOctaveLyrics, parseOctaveResolve, parseOctaveSearch, percentEncode, formatSeconds'
+          if old_import not in s:
+            raise SystemExit('provider test import anchor changed')
+          s = s.replace(old_import, new_import, 1)
+          anchor = 'test("parseOctaveResolve returns the signed audio and preview URLs", () => {'
+          coverage = '''test("parseOctaveLyrics strips synced LRC timestamps for a Spotify-style reading surface", () => {\n  const fixture = b(JSON.stringify({ syncedLyrics: "[00:03.18]First line\\n[00:07.42] Second line\\n[01:02.00]Third line" }));\n  assert.equal(s(parseOctaveLyrics(fixture)), "First line\\nSecond line\\nThird line");\n});\n\n'''
+          if anchor not in s:
+            raise SystemExit('provider test insertion anchor changed')
+          s = s.replace(anchor, coverage + anchor, 1)
+          test.write_text(s)
           PY
+
       - run: npm ci
+      - name: Provider and model unit tests
+        run: npm run test:unit
       - run: rm -rf .native/build .native/generated .native/cache .zig-cache zig-out
       - name: Static validation
         run: npx --no-install native check --yes
@@ -48,41 +87,100 @@ jobs:
         run: npx --no-install native build --yes -Dautomation=true
       - name: Dark appearance
         run: defaults write -g AppleInterfaceStyle Dark; killall cfprefsd || true
-      - name: Capture key surfaces
+
+      - name: Exercise real Spotify flows and capture populated surfaces
         shell: bash
         run: |
           set -euo pipefail
           ./zig-out/bin/spotify >/tmp/spotify.log 2>&1 & echo $! >/tmp/spotify.pid
           npx --no-install native automate wait
           npx --no-install native automate resize 1440 900 1
-          sleep 1; mkdir -p docs/screenshots
-          snap(){ npx --no-install native automate snapshot | tee /tmp/snap >/dev/null; ! grep -q MarkupBuild /tmp/snap; ! grep -q 'markup view failed' /tmp/spotify.log; }
-          wid(){ grep -m1 "role=$1 name=\"$2\"" /tmp/snap | sed -E 's/.*#([0-9]+) role=.*/\1/' || true; }
-          click(){ snap; id="$(wid "$1" "$2")"; test -n "$id" || return 1; npx --no-install native automate widget-click spotify-canvas "$id"; sleep 1; }
-          shot(){ snap; f="$(npx --no-install native automate screenshot spotify-canvas 1 | tail -1)"; test -s "$f"; cp "$f" "docs/screenshots/$1.png"; }
+          sleep 1
+          mkdir -p docs/screenshots
+
+          snap() {
+            npx --no-install native automate snapshot | tee /tmp/snap >/dev/null
+            ! grep -q MarkupBuild /tmp/snap
+            ! grep -q 'markup view failed' /tmp/spotify.log
+            grep -q 'dispatch_errors=0' /tmp/snap
+          }
+          wid() {
+            grep -m1 "role=$1 name=\"$2\"" /tmp/snap | sed -E 's/.*#([0-9]+) role=.*/\1/' || true
+          }
+          click() {
+            snap
+            local id
+            id="$(wid "$1" "$2")"
+            test -n "$id" || return 1
+            npx --no-install native automate widget-click spotify-canvas "$id"
+            sleep 1
+          }
+          first_catalog_row() {
+            grep -m1 'role=listitem.*context_menu=' /tmp/snap | sed -E 's/.*#([0-9]+) role=.*/\1/' || true
+          }
+          menu_pick() {
+            snap
+            local id
+            id="$(first_catalog_row)"
+            test -n "$id" || return 1
+            npx --no-install native automate widget-context-menu spotify-canvas "$id" "$1"
+            sleep 1
+          }
+          play_first_catalog_row() {
+            snap
+            local id
+            id="$(first_catalog_row)"
+            test -n "$id" || return 1
+            npx --no-install native automate widget-click spotify-canvas "$id"
+            sleep 4
+          }
+          shot() {
+            snap
+            local f
+            f="$(npx --no-install native automate screenshot spotify-canvas 1 | tail -1)"
+            test -s "$f"
+            cp "$f" "docs/screenshots/$1.png"
+          }
+
+          # Empty-state baseline, then build real persisted state through the UI.
           shot home
-          click listitem 'Liked Songs' && shot liked-songs || true
+          click button 'Create playlist' || true
           click button Home || true
-          if click button 'Create playlist'; then click listitem 'My Playlist' && shot playlist || true; fi
-          click button Home || true
-          if click listitem 'Trending now'; then
-            sleep 4; shot search; snap
-            id="$(grep 'role=listitem' /tmp/snap | grep -v 'name=\"Liked Songs\"' | grep -v 'name=\"My Playlist\"' | head -1 | sed -E 's/.*#([0-9]+) role=.*/\1/' || true)"
-            if test -n "$id"; then
-              npx --no-install native automate widget-click spotify-canvas "$id" || true; sleep 4
-              click button Lyrics && sleep 2 && shot lyrics || true
-              click button 'Open artist' && sleep 4 && shot artist || true
-            fi
-          fi
+          click listitem 'Trending now'
+          sleep 4
+          snap
+          test -n "$(first_catalog_row)"
+
+          # Same context-menu paths a user uses: save, add to playlist, then play.
+          menu_pick 2
+          menu_pick 3
+          play_first_catalog_row
+          shot search
+
+          click listitem 'Liked Songs'
+          shot liked-songs
+          click listitem 'My Playlist'
+          shot playlist
+
+          click button Lyrics
+          sleep 3
+          shot lyrics
+          ! grep -q 'name="\[[0-9][0-9]:' /tmp/snap
+
+          click button 'Open artist'
+          sleep 4
+          shot artist
+
       - name: Stop app
         if: always()
         run: test ! -f /tmp/spotify.pid || kill "$(cat /tmp/spotify.pid)" || true
-      - name: Commit verified visuals
+
+      - name: Commit verified source and screenshots
         shell: bash
         run: |
           git config user.name spotify-ci
           git config user.email spotify-ci@users.noreply.github.com
-          git add src/core.ts src/app.native docs/screenshots/*.png
+          git add src/core.ts src/provider.ts src/app.native tests/provider.test.ts docs/screenshots/*.png
           git diff --cached --quiet && exit 0
-          git commit -m 'fix: refine Spotify desktop parity'
+          git commit -m 'fix: prove populated Spotify library and clean lyrics'
           git push origin HEAD:fix/spotify-ui-recursive
