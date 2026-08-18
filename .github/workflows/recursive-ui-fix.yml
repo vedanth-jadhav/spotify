@@ -48,7 +48,7 @@ jobs:
             '<row padding="10" gap="8"><badge variant="secondary">Playlists</badge><badge variant="secondary">Artists</badge></row>':'<row padding="10" gap="8"><badge variant="secondary">Playlists</badge><badge variant="secondary">Podcasts</badge><badge variant="secondary">Artists</badge></row>',
             '>Recents</text>':'>Recently added</text>',
             '<panel width="310" background="surface" radius="lg" label="Now playing">':'<panel width="330" background="surface" radius="lg" label="Now playing">',
-            '<row height="92" padding="12" gap="12" cross="center" label="Now playing bar">':'<row height="84" padding="12" gap="12" cross="center" label="Now playing bar">',
+            '<row height="92" padding="12" gap="12" cross="center" background="background" label="Now playing bar">':'<row height="84" padding="12" gap="12" cross="center" background="background" label="Now playing bar">',
           }.items():
             s = s.replace(old, new)
           app.write_text(s)
@@ -60,6 +60,9 @@ jobs:
           if parse_anchor not in s:
             raise SystemExit('verified lyrics parser anchor changed')
           s = s.replace(parse_anchor, helper)
+          s = s.replace('if (plain.length > 0) return plain;', 'if (plain.length > 0) return stripLrcTimestamps(plain);', 1)
+          s = s.replace('if (lyrics.length > 0) return lyrics;', 'if (lyrics.length > 0) return stripLrcTimestamps(lyrics);', 1)
+          s = s.replace('return jsonStringAfter(body, asciiBytes("\\\"text\\\":"), 0);', 'return stripLrcTimestamps(jsonStringAfter(body, asciiBytes("\\\"text\\\":"), 0));', 1)
           provider.write_text(s)
 
           test = Path('tests/provider.test.ts')
@@ -70,7 +73,7 @@ jobs:
             raise SystemExit('provider test import anchor changed')
           s = s.replace(old_import, new_import, 1)
           anchor = 'test("parseOctaveResolve returns the signed audio and preview URLs", () => {'
-          coverage = '''test("parseOctaveLyrics strips synced LRC timestamps for a Spotify-style reading surface", () => {\n  const fixture = b(JSON.stringify({ syncedLyrics: "[00:03.18]First line\\n[00:07.42] Second line\\n[01:02.00]Third line" }));\n  assert.equal(s(parseOctaveLyrics(fixture)), "First line\\nSecond line\\nThird line");\n});\n\n'''
+          coverage = '''test("parseOctaveLyrics strips synced LRC timestamps for a Spotify-style reading surface", () => {\n  const fixture = b(JSON.stringify({ syncedLyrics: "[00:03.18]First line\\n[00:07.42] Second line\\n[01:02.00]Third line" }));\n  assert.equal(s(parseOctaveLyrics(fixture)), "First line\\nSecond line\\nThird line");\n});\n\ntest("parseOctaveLyrics also strips timestamps from legacy lyrics fallback payloads", () => {\n  const fixture = b(JSON.stringify({ lyrics: "[00:01.00]Fallback line\\n[00:04.25]Next line" }));\n  assert.equal(s(parseOctaveLyrics(fixture)), "Fallback line\\nNext line");\n});\n\n'''
           if anchor not in s:
             raise SystemExit('provider test insertion anchor changed')
           s = s.replace(anchor, coverage + anchor, 1)
@@ -142,7 +145,6 @@ jobs:
             cp "$f" "docs/screenshots/$1.png"
           }
 
-          # Empty-state baseline, then build real persisted state through the UI.
           shot home
           click button 'Create playlist' || true
           click button Home || true
@@ -150,8 +152,6 @@ jobs:
           sleep 4
           snap
           test -n "$(first_catalog_row)"
-
-          # Same context-menu paths a user uses: save, add to playlist, then play.
           menu_pick 2
           menu_pick 3
           play_first_catalog_row
@@ -165,7 +165,7 @@ jobs:
           click button Lyrics
           sleep 3
           shot lyrics
-          ! grep -q 'name="\[[0-9][0-9]:' /tmp/snap
+          ! grep -Eq '\\[[0-9][0-9]:' /tmp/snap
 
           click button 'Open artist'
           sleep 4
