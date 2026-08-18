@@ -78,11 +78,11 @@ jobs:
           PY
 
       - run: npm ci
+      - run: rm -rf .native/build .native/generated .native/cache .zig-cache zig-out
+      - name: Static validation and core generation
+        run: npx --no-install native check --yes
       - name: Provider and model unit tests
         run: npm run test:unit
-      - run: rm -rf .native/build .native/generated .native/cache .zig-cache zig-out
-      - name: Static validation
-        run: npx --no-install native check --yes
       - name: Build automation binary
         run: npx --no-install native build --yes -Dautomation=true
       - name: Dark appearance
