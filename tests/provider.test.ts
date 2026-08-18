@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { octaveLyricsUrl, octaveResolveUrl, octaveResolveUrlWithQuality, octaveSearchUrl, octaveTrendingUrl, parseDeezerSearch, parseOctaveResolve, parseOctaveSearch, percentEncode, formatSeconds } from "../src/provider.ts";
+import { octaveLyricsUrl, octaveResolveUrl, octaveResolveUrlWithQuality, octaveSearchUrl, octaveTrendingUrl, parseDeezerSearch, parseOctaveLyrics, parseOctaveResolve, parseOctaveSearch, percentEncode, formatSeconds } from "../src/provider.ts";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -36,6 +36,16 @@ test("parseOctaveSearch reads the live Octave search shape", () => {
   assert.equal(tracks[0].durationSec, 230);
   assert.equal(s(tracks[0].coverUrl), "https://cdn-images.dzcdn.net/cover.jpg");
   assert.equal(s(tracks[0].fallbackPreviewUrl), "https://cdnt-preview.dzcdn.net/preview.mp3");
+});
+
+test("parseOctaveLyrics strips synced LRC timestamps for a Spotify-style reading surface", () => {
+  const fixture = b(JSON.stringify({ syncedLyrics: "[00:03.18]First line\n[00:07.42] Second line\n[01:02.00]Third line" }));
+  assert.equal(s(parseOctaveLyrics(fixture)), "First line\nSecond line\nThird line");
+});
+
+test("parseOctaveLyrics also strips timestamps from legacy lyrics fallback payloads", () => {
+  const fixture = b(JSON.stringify({ lyrics: "[00:01.00]Fallback line\n[00:04.25]Next line" }));
+  assert.equal(s(parseOctaveLyrics(fixture)), "Fallback line\nNext line");
 });
 
 test("parseOctaveResolve returns the signed audio and preview URLs", () => {
