@@ -1,6 +1,9 @@
 name: Recursive Spotify UI verifier
 
 on:
+  push:
+    branches:
+      - fix/spotify-ui-recursive
   workflow_dispatch:
 
 concurrency:
