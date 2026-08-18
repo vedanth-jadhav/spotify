@@ -85,6 +85,12 @@ export interface TrackRow {
   readonly artist: Bytes;
   readonly album: Bytes;
   readonly duration: Bytes;
+  readonly artA: boolean;
+  readonly artB: boolean;
+  readonly artC: boolean;
+  readonly artD: boolean;
+  readonly artE: boolean;
+  readonly artF: boolean;
   readonly active: boolean;
   readonly liked: boolean;
 }
@@ -1058,28 +1064,33 @@ export function trackRows(model: Model): readonly TrackRow[] {
   return model.tracks.map((track, indexRaw) => {
     const index = indexRaw >= 0 && indexRaw <= 9007199254740990 ? Math.trunc(indexRaw) : 0;
     const id = index + 1;
-    return { id: id, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: sameTrack(track, model.nowTrack), liked: isLiked(model, id) };
+    return { id: id, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), artA: index % 6 === 0, artB: index % 6 === 1, artC: index % 6 === 2, artD: index % 6 === 3, artE: index % 6 === 4, artF: index % 6 === 5, active: sameTrack(track, model.nowTrack), liked: isLiked(model, id) };
   });
 }
 export function likedRows(model: Model): readonly TrackRow[] {
   return model.likedTracks.map((track, indexRaw) => {
     const index = indexRaw >= 0 && indexRaw <= 29 ? Math.trunc(indexRaw) : 0;
-    return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: sameTrack(track, model.nowTrack), liked: true };
+    return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), artA: index % 6 === 0, artB: index % 6 === 1, artC: index % 6 === 2, artD: index % 6 === 3, artE: index % 6 === 4, artF: index % 6 === 5, active: sameTrack(track, model.nowTrack), liked: true };
   });
 }
 export function queueRows(model: Model): readonly TrackRow[] {
   return model.queue.map((item, indexRaw) => {
     const index = indexRaw >= 0 && indexRaw <= 29 ? Math.trunc(indexRaw) : 0;
-    return { id: index + 1, title: item.track.title, artist: item.track.artist, album: item.track.album, duration: formatSeconds(item.track.durationSec), active: sameTrack(item.track, model.nowTrack), liked: trackIn(model.likedTracks, item.track) };
+    return { id: index + 1, title: item.track.title, artist: item.track.artist, album: item.track.album, duration: formatSeconds(item.track.durationSec), artA: index % 6 === 0, artB: index % 6 === 1, artC: index % 6 === 2, artD: index % 6 === 3, artE: index % 6 === 4, artF: index % 6 === 5, active: sameTrack(item.track, model.nowTrack), liked: trackIn(model.likedTracks, item.track) };
   });
 }
 export function playlistRows(model: Model): readonly TrackRow[] {
   return model.playlistTracks.map((track, indexRaw) => {
     const index = indexRaw >= 0 && indexRaw <= 29 ? Math.trunc(indexRaw) : 0;
-    return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: sameTrack(track, model.nowTrack), liked: trackIn(model.likedTracks, track) };
+    return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), artA: index % 6 === 0, artB: index % 6 === 1, artC: index % 6 === 2, artD: index % 6 === 3, artE: index % 6 === 4, artF: index % 6 === 5, active: sameTrack(track, model.nowTrack), liked: trackIn(model.likedTracks, track) };
   });
 }
 export function hasPlaylist(model: Model): boolean { return model.playlistCreated; }
+
+export function hasSearchResults(model: Model): boolean { return model.tracks.length > 0; }
+export function topResultTitle(model: Model): Bytes { return model.tracks.length > 0 ? model.tracks[0].title : asciiBytes("No result"); }
+export function topResultArtist(model: Model): Bytes { return model.tracks.length > 0 ? model.tracks[0].artist : new Uint8Array(0); }
+export function topResultAlbum(model: Model): Bytes { return model.tracks.length > 0 ? model.tracks[0].album : new Uint8Array(0); }
 export function searchIdle(model: Model): boolean { return model.searchPhase === "idle" && model.search.bytes.length === 0; }
 export function quality128(model: Model): boolean { return model.quality === "q128"; }
 export function quality320(model: Model): boolean { return model.quality === "q320"; }
