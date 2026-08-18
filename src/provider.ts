@@ -118,88 +118,85 @@ function bytesEqualAt(haystack: Bytes, at: number, needle: Bytes): boolean {
 }
 
 function findFrom(haystack: Bytes, needle: Bytes, from: number): number {
-  if (needle.length === 0) return from;
-  for (let i = Math.max(0, from); i + needle.length <= haystack.length; i += 1) if (bytesEqualAt(haystack, i, needle)) return i;
+  const start = Math.max(0, from);
+  if (needle.length === 0) return start <= haystack.length ? start : -1;
+  for (let i = start; i + needle.length <= haystack.length; i += 1) if (bytesEqualAt(haystack, i, needle)) return i;
   return -1;
 }
 
-function parseUnsignedAt(bytes: Bytes, at: number): number {
-  let value = 0;
-  let i = at;
-  while (i < bytes.length && (bytes[i] === 0x20 || bytes[i] === 0x3a)) i += 1;
-  let seen = false;
-  while (i < bytes.length && bytes[i] >= 0x30 && bytes[i] <= 0x39) {
-    seen = true;
-    value = value * 10 + (bytes[i] - 0x30);
-    if (value > 9007199254740991) return 0;
-    i += 1;
-  }
-  return seen ? Math.trunc(value) : 0;
+function decodeHex(ch: number): number {
+  if (ch >= 0x30 && ch <= 0x39) return ch - 0x30;
+  if (ch >= 0x41 && ch <= 0x46) return 10 + ch - 0x41;
+  if (ch >= 0x61 && ch <= 0x66) return 10 + ch - 0x61;
+  return -1;
 }
 
-function jsonStringAfter(bytes: Bytes, key: Bytes, from: number): Bytes {
-  const keyAt = findFrom(bytes, key, from);
-  if (keyAt < 0) return new Uint8Array(0);
-  let i = keyAt + key.length;
-  while (i < bytes.length && bytes[i] !== 0x22) i += 1;
-  if (i >= bytes.length) return new Uint8Array(0);
-  i += 1;
-  const out = new Uint8Array(4096);
+function jsonStringAt(bytes: Bytes, quoteAt: number): Bytes {
+  if (quoteAt < 0 || quoteAt >= bytes.length || bytes[quoteAt] !== 0x22) return new Uint8Array(0);
+  const out = new Uint8Array(bytes.length - quoteAt);
   let size = 0;
-  while (i < bytes.length && size < out.length) {
+  let escaped = false;
+  for (let i = quoteAt + 1; i < bytes.length; i += 1) {
     const ch = bytes[i];
-    if (ch === 0x22) return out.slice(0, size);
-    if (ch === 0x5c && i + 1 < bytes.length) {
-      const escaped = bytes[i + 1];
-      if (escaped === 0x22 || escaped === 0x5c || escaped === 0x2f) out[size] = escaped;
-      else if (escaped === 0x6e) out[size] = 0x0a;
-      else if (escaped === 0x72) out[size] = 0x0d;
-      else if (escaped === 0x74) out[size] = 0x09;
-      else if (escaped === 0x75 && i + 5 < bytes.length) {
-        const h0 = bytes[i + 2]; const h1 = bytes[i + 3]; const h2 = bytes[i + 4]; const h3 = bytes[i + 5];
-        const validHex = (h0 >= 0x30 && h0 <= 0x39 || h0 >= 0x41 && h0 <= 0x46 || h0 >= 0x61 && h0 <= 0x66)
-          && (h1 >= 0x30 && h1 <= 0x39 || h1 >= 0x41 && h1 <= 0x46 || h1 >= 0x61 && h1 <= 0x66)
-          && (h2 >= 0x30 && h2 <= 0x39 || h2 >= 0x41 && h2 <= 0x46 || h2 >= 0x61 && h2 <= 0x66)
-          && (h3 >= 0x30 && h3 <= 0x39 || h3 >= 0x41 && h3 <= 0x46 || h3 >= 0x61 && h3 <= 0x66);
-        out[size] = 0x3f;
-        size += 1;
-        i += validHex ? 6 : 2;
-        continue;
-      }
-      else out[size] = 0x3f;
+    if (!escaped && ch === 0x22) return out.slice(0, size);
+    if (!escaped && ch === 0x5c) { escaped = true; continue; }
+    if (escaped) {
+      if (ch === 0x6e) out[size] = 0x0a;
+      else if (ch === 0x72) out[size] = 0x0d;
+      else if (ch === 0x74) out[size] = 0x09;
+      else if (ch === 0x62) out[size] = 0x08;
+      else if (ch === 0x66) out[size] = 0x0c;
+      else if (ch === 0x75 && i + 4 < bytes.length) {
+        const h0 = decodeHex(bytes[i + 1]); const h1 = decodeHex(bytes[i + 2]); const h2 = decodeHex(bytes[i + 3]); const h3 = decodeHex(bytes[i + 4]);
+        if (h0 >= 0 && h1 >= 0 && h2 >= 0 && h3 >= 0) {
+          const code = h0 * 4096 + h1 * 256 + h2 * 16 + h3;
+          if (code < 0x80) out[size] = code;
+          else out[size] = 0x3f;
+          i += 4;
+        } else out[size] = 0x3f;
+      } else out[size] = ch;
       size += 1;
-      i += 2;
-    } else {
-      out[size] = ch;
-      size += 1;
-      i += 1;
+      escaped = false;
+      continue;
     }
+    out[size] = ch;
+    size += 1;
   }
   return new Uint8Array(0);
 }
 
-function unsignedBytesAt(bytes: Bytes, at: number): Bytes {
-  let start = at;
-  while (start < bytes.length && (bytes[start] === 0x20 || bytes[start] === 0x3a)) start += 1;
-  let end = start;
-  while (end < bytes.length && bytes[end] >= 0x30 && bytes[end] <= 0x39) end += 1;
-  return end > start ? bytes.slice(start, end) : new Uint8Array(0);
+function jsonStringAfter(body: Bytes, key: Bytes, from: number): Bytes {
+  const at = findFrom(body, key, from);
+  if (at < 0) return new Uint8Array(0);
+  let cursor = at + key.length;
+  while (cursor < body.length && (body[cursor] === 0x20 || body[cursor] === 0x09 || body[cursor] === 0x0a || body[cursor] === 0x0d)) cursor += 1;
+  return jsonStringAt(body, cursor);
 }
 
-function idBefore(bytes: Bytes, before: number): Bytes {
-  const key = asciiBytes("\"id\":");
-  const start = Math.max(0, before - 180);
-  let found = -1;
-  let cursor = start;
-  while (cursor < before) {
-    const next = findFrom(bytes, key, cursor);
-    if (next < 0 || next >= before) break;
-    found = next;
-    cursor = next + key.length;
+function parseUnsignedAt(body: Bytes, from: number): number {
+  let cursor = from;
+  while (cursor < body.length && (body[cursor] === 0x20 || body[cursor] === 0x09 || body[cursor] === 0x0a || body[cursor] === 0x0d)) cursor += 1;
+  let value = 0;
+  let digits = 0;
+  while (cursor < body.length) {
+    const ch = body[cursor];
+    if (ch < 0x30 || ch > 0x39) break;
+    value = value * 10 + (ch - 0x30);
+    digits += 1;
+    cursor += 1;
   }
-  return found < 0 ? new Uint8Array(0) : unsignedBytesAt(bytes, found + key.length);
+  return digits > 0 ? value : -1;
 }
 
+function unsignedBytesAt(body: Bytes, from: number): Bytes {
+  let cursor = from;
+  while (cursor < body.length && (body[cursor] === 0x20 || body[cursor] === 0x09 || body[cursor] === 0x0a || body[cursor] === 0x0d)) cursor += 1;
+  if (cursor >= body.length) return new Uint8Array(0);
+  if (body[cursor] === 0x22) return jsonStringAt(body, cursor);
+  const start = cursor;
+  while (cursor < body.length && body[cursor] >= 0x30 && body[cursor] <= 0x39) cursor += 1;
+  return cursor > start ? body.slice(start, cursor) : new Uint8Array(0);
+}
 
 function jsonEscaped(input: Bytes): Bytes {
   let extra = 0;
@@ -227,9 +224,46 @@ export function octaveLyricsBody(track: Track): Bytes {
   return concatBytes(concatBytes(concatBytes(id, title), concatBytes(artist, album)), concatBytes(duration, asciiBytes(",\"source\":\"deezer\"}")));
 }
 
+function isLrcTimestampTag(input: Bytes, start: number, end: number): boolean {
+  if (end <= start + 1 || end - start > 18) return false;
+  let sawColon = false;
+  let sawDigit = false;
+  for (let i = start + 1; i < end; i += 1) {
+    const ch = input[i];
+    if (ch >= 0x30 && ch <= 0x39) { sawDigit = true; continue; }
+    if (ch === 0x3a) { sawColon = true; continue; }
+    if (ch === 0x2e) continue;
+    return false;
+  }
+  return sawDigit && sawColon;
+}
+
+export function stripLrcTimestamps(input: Bytes): Bytes {
+  if (input.length === 0) return input;
+  const out = new Uint8Array(input.length);
+  let size = 0;
+  let i = 0;
+  while (i < input.length) {
+    if (input[i] === 0x5b) {
+      let close = i + 1;
+      const limit = Math.min(input.length, i + 20);
+      while (close < limit && input[close] !== 0x5d) close += 1;
+      if (close < limit && input[close] === 0x5d && isLrcTimestampTag(input, i, close)) {
+        i = close + 1;
+        if (i < input.length && input[i] === 0x20) i += 1;
+        continue;
+      }
+    }
+    out[size] = input[i];
+    size += 1;
+    i += 1;
+  }
+  return out.slice(0, size);
+}
+
 export function parseOctaveLyrics(body: Bytes): Bytes {
   const synced = jsonStringAfter(body, asciiBytes("\"syncedLyrics\":"), 0);
-  if (synced.length > 0) return synced;
+  if (synced.length > 0) return stripLrcTimestamps(synced);
   const plain = jsonStringAfter(body, asciiBytes("\"plainLyrics\":"), 0);
   if (plain.length > 0) return plain;
   const lyrics = jsonStringAfter(body, asciiBytes("\"lyrics\":"), 0);
@@ -276,6 +310,7 @@ export function parseOctaveSearch(body: Bytes): readonly Track[] {
 }
 
 export function parseDeezerSearch(body: Bytes): readonly Track[] {
+  const idKey = asciiBytes("\"id\":");
   const titleKey = asciiBytes("\"title\":");
   const durationKey = asciiBytes("\"duration\":");
   const previewKey = asciiBytes("\"preview\":");
@@ -286,14 +321,15 @@ export function parseDeezerSearch(body: Bytes): readonly Track[] {
   const out: Track[] = [];
   let cursor = 0;
   while (out.length < 30) {
-    const titleAt = findFrom(body, titleKey, cursor);
-    if (titleAt < 0) break;
-    const artistAt = findFrom(body, artistKey, titleAt);
-    const albumAt = findFrom(body, albumKey, titleAt);
+    const idAt = findFrom(body, idKey, cursor);
+    if (idAt < 0) break;
+    const titleAt = findFrom(body, titleKey, idAt);
     const durationAt = findFrom(body, durationKey, titleAt);
-    const previewAt = findFrom(body, previewKey, titleAt);
-    if (artistAt < 0 || albumAt < 0 || durationAt < 0 || previewAt < 0) break;
-    const remoteId = idBefore(body, titleAt);
+    const previewAt = findFrom(body, previewKey, durationAt);
+    const artistAt = findFrom(body, artistKey, previewAt);
+    const albumAt = findFrom(body, albumKey, artistAt);
+    if (titleAt < 0 || durationAt < 0 || previewAt < 0 || artistAt < 0 || albumAt < 0) break;
+    const remoteId = unsignedBytesAt(body, idAt + idKey.length);
     const title = jsonStringAfter(body, titleKey, titleAt);
     const artist = jsonStringAfter(body, nameKey, artistAt);
     const album = jsonStringAfter(body, titleKey, albumAt);
@@ -301,25 +337,24 @@ export function parseDeezerSearch(body: Bytes): readonly Track[] {
     const preview = jsonStringAfter(body, previewKey, previewAt);
     const parsedDuration = parseUnsignedAt(body, durationAt + durationKey.length);
     const duration = parsedDuration >= 0 && parsedDuration <= 9007199254740991 ? Math.trunc(parsedDuration) : 0;
-    if (remoteId.length > 0 && title.length > 0) {
-      out.push({ remoteId: remoteId, title: title, artist: artist, album: album, durationSec: duration, coverUrl: cover, fallbackPreviewUrl: preview });
-    }
-    cursor = Math.max(previewAt + previewKey.length, titleAt + titleKey.length);
+    if (remoteId.length > 0 && title.length > 0) out.push({ remoteId, title, artist, album, durationSec: duration, coverUrl: cover, fallbackPreviewUrl: preview });
+    cursor = albumAt + albumKey.length;
   }
   return out;
 }
 
-export function parseOctaveResolve(body: Bytes): ResolvedTrack {
+export function parseOctaveResolve(body: Bytes): ResolvedTrack | undefined {
   const url = jsonStringAfter(body, asciiBytes("\"url\":"), 0);
+  if (url.length === 0) return undefined;
   const preview = jsonStringAfter(body, asciiBytes("\"preview\":"), 0);
-  return { url: url, preview: preview };
+  return { url, preview };
 }
 
-export function formatSeconds(value: number): Bytes {
-  let seconds = value >= 0 && value < 86400 ? Math.trunc(value) : 0;
-  let minutes = 0;
-  while (seconds >= 60) { seconds -= 60; minutes += 1; }
-  const left = decimalBytes(minutes);
-  const right = seconds < 10 ? concatBytes(asciiBytes("0"), decimalBytes(seconds)) : decimalBytes(seconds);
-  return concat3(left, asciiBytes(":"), right);
+export function formatSeconds(durationSeconds: number): Bytes {
+  const safe = durationSeconds >= 0 && durationSeconds <= 86400 ? Math.trunc(durationSeconds) : 0;
+  const minutes = Math.trunc(safe / 60);
+  const seconds = safe - minutes * 60;
+  const prefix = asciiBytes(`${minutes}:`);
+  const suffix = seconds < 10 ? asciiBytes(`0${seconds}`) : asciiBytes(`${seconds}`);
+  return concatBytes(prefix, suffix);
 }
