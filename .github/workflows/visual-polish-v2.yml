@@ -1,0 +1,48 @@
+name: Apply Spotify visual artwork pass v2
+
+on:
+  push:
+    branches: [feat/spotify-ui-ux-final]
+    paths: [.github/workflows/visual-polish-v2.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: macos-15
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/spotify-ui-ux-final
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.16.0
+      - name: Apply artwork pass with supported controls
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+          w=Path('.github/workflows/visual-polish.yml').read_text()
+          blocks=w.split("python3 - <<'PY'\n")
+          if len(blocks) < 3: raise SystemExit('visual polish scripts missing')
+          gen=dedent(blocks[1].split('\n          PY',1)[0])
+          patch=dedent(blocks[2].split('\n          PY',1)[0])
+          unsupported='s=s.replace(\'<button size="icon" variant="secondary" on-press="go_home" label="Home">H</button>\',\'<button size="icon" variant="secondary" icon="home" on-press="go_home" label="Home"></button>\',1)'
+          patch=patch.replace(unsupported, '# Keep the validated text-based Home control; native-sdk 0.8.3 has no built-in home icon.')
+          exec(compile(gen,'generate-art.py','exec'))
+          exec(compile(patch,'visual-patch.py','exec'))
+          PY
+      - run: npm ci
+      - run: npx --no-install native check --yes
+      - run: npm run test:unit
+      - run: npx --no-install native test --yes
+      - name: Commit visual artwork pass
+        run: |
+          git config user.name spotify-ci
+          git config user.email spotify-ci@users.noreply.github.com
+          git add app.zon src/core.ts src/app.native assets/art
+          git commit -m 'feat: add Spotify-style native artwork and denser surfaces'
+          git push origin HEAD:feat/spotify-ui-ux-final
