@@ -1,0 +1,77 @@
+name: Apply Spotify visual artwork pass v3
+
+on:
+  push:
+    branches: [feat/spotify-ui-ux-final]
+    paths: [.github/workflows/visual-polish-v3.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: macos-15
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/spotify-ui-ux-final
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288ca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.16.0
+      - name: Apply ScriptC-safe visual pass
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+          w=Path('.github/workflows/visual-polish.yml').read_text()
+          blocks=w.split("python3 - <<'PY'\n")
+          gen=dedent(blocks[1].split('\n          PY',1)[0])
+          patch=dedent(blocks[2].split('\n          PY',1)[0])
+          unsupported='s=s.replace(\'<button size="icon" variant="secondary" on-press="go_home" label="Home">H</button>\',\'<button size="icon" variant="secondary" icon="home" on-press="go_home" label="Home"></button>\',1)'
+          patch=patch.replace(unsupported, '# Native SDK 0.8.3 does not expose a built-in home icon.')
+          exec(compile(gen,'generate-art.py','exec'))
+
+          # Redraw Liked Songs with a recognisable heart instead of a glyph-like placeholder.
+          p=canvas((55,22,180),(145,220,222))
+          white=(250,250,250)
+          circle(p,120,126,58,white); circle(p,200,126,58,white)
+          def tri_inside(x,y,a,b,c):
+              def sign(p1,p2,p3): return (p1[0]-p3[0])*(p2[1]-p3[1])-(p2[0]-p3[0])*(p1[1]-p3[1])
+              pt=(x,y); d1=sign(pt,a,b); d2=sign(pt,b,c); d3=sign(pt,c,a)
+              return not ((d1<0 or d2<0 or d3<0) and (d1>0 or d2>0 or d3>0))
+          for y in range(105,258):
+              for x in range(62,259):
+                  if tri_inside(x,y,(67,128),(253,128),(160,258)): px(p,x,y,white)
+          save('liked.png',p)
+
+          exec(compile(patch,'visual-patch.py','exec'))
+
+          # ScriptC cannot currently prove a computed image id inside repeated row records.
+          # Keep real artwork on Spotify surfaces/heroes/cards and use the validated row glyphs.
+          p=Path('src/core.ts'); s=p.read_text()
+          s=s.replace('  readonly art: number;\n','',1)
+          start=s.find('function rowArt(index: number): number {')
+          if start >= 0:
+              end=s.find('export function trackRows',start)
+              s=s[:start]+s[end:]
+          s=s.replace(', art: rowArt(index)', '')
+          p.write_text(s)
+
+          p=Path('src/app.native'); s=p.read_text()
+          s=s.replace('<image image="{t.art}" width="44" height="44" label="{t.title}" />','<panel width="44" height="44" radius="sm" background="surface_pressed"><row grow="1" main="center" cross="center"><icon name="music" width="18" height="18" foreground="text_muted"></icon></row></panel>')
+          s=s.replace('<image image="{t.art}" width="48" height="48" label="{t.title}" />','<panel width="48" height="48" radius="sm" background="surface_pressed"><row grow="1" main="center" cross="center"><icon name="music" width="18" height="18"></icon></row></panel>')
+          p.write_text(s)
+          PY
+      - run: npm ci
+      - run: npx --no-install native check --yes
+      - run: npm run test:unit
+      - run: npx --no-install native test --yes
+      - name: Commit visual artwork pass
+        run: |
+          git config user.name spotify-ci
+          git config user.email spotify-ci@users.noreply.github.com
+          git add app.zon src/core.ts src/app.native assets/art
+          git commit -m 'feat: add Spotify-style native artwork and denser surfaces'
+          git push origin HEAD:feat/spotify-ui-ux-final
