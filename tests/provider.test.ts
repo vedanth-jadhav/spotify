@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { octaveLyricsUrl, octaveResolveUrl, octaveResolveUrlWithQuality, octaveSearchUrl, octaveTrendingUrl, parseDeezerSearch, parseOctaveResolve, parseOctaveSearch, percentEncode, formatSeconds } from "../src/provider.ts";
+import { octaveLyricsBody, octaveLyricsUrl, octaveResolveUrl, octaveResolveUrlWithQuality, octaveSearchUrl, octaveTrendingUrl, parseDeezerSearch, parseOctaveLyrics, parseOctaveResolve, parseOctaveSearch, percentEncode, formatSeconds } from "../src/provider.ts";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -36,6 +36,16 @@ test("parseOctaveSearch reads the live Octave search shape", () => {
   assert.equal(tracks[0].durationSec, 230);
   assert.equal(s(tracks[0].coverUrl), "https://cdn-images.dzcdn.net/cover.jpg");
   assert.equal(s(tracks[0].fallbackPreviewUrl), "https://cdnt-preview.dzcdn.net/preview.mp3");
+});
+
+test("parseOctaveLyrics strips synced LRC timestamps for a Spotify-style reading surface", () => {
+  const fixture = b(JSON.stringify({ syncedLyrics: "[00:03.18]First line\n[00:07.42] Second line\n[01:02.00]Third line" }));
+  assert.equal(s(parseOctaveLyrics(fixture)), "First line\nSecond line\nThird line");
+});
+
+test("parseOctaveLyrics also strips timestamps from legacy lyrics fallback payloads", () => {
+  const fixture = b(JSON.stringify({ lyrics: "[00:01.00]Fallback line\n[00:04.25]Next line" }));
+  assert.equal(s(parseOctaveLyrics(fixture)), "Fallback line\nNext line");
 });
 
 test("parseOctaveResolve returns the signed audio and preview URLs", () => {
@@ -83,4 +93,29 @@ test("formatSeconds pads seconds and clamps invalid durations", () => {
   assert.equal(s(formatSeconds(230)), "3:50");
   assert.equal(s(formatSeconds(5)), "0:05");
   assert.equal(s(formatSeconds(-1)), "0:00");
+});
+
+
+test("parseOctaveLyrics handles all fallbacks and preserves non-timestamp tags", () => {
+  assert.equal(s(parseOctaveLyrics(b(JSON.stringify({ plainLyrics: "Plain line" })))), "Plain line");
+  assert.equal(s(parseOctaveLyrics(b(JSON.stringify({ text: "Text fallback" })))), "Text fallback");
+  assert.equal(s(parseOctaveLyrics(b(JSON.stringify({ syncedLyrics: "[Verse 1]\n[00:01.00]Line" })))), "[Verse 1]\nLine");
+  assert.equal(parseOctaveLyrics(b(JSON.stringify({ nope: "nothing" }))).length, 0);
+});
+
+test("parseOctaveLyrics keeps lyric payloads larger than four kilobytes", () => {
+  const longLyrics = "long lyric line\n".repeat(400);
+  assert.ok(longLyrics.length > 4096);
+  assert.equal(s(parseOctaveLyrics(b(JSON.stringify({ plainLyrics: longLyrics })))), longLyrics);
+});
+
+test("octaveLyricsBody escapes track metadata as valid JSON", () => {
+  const track = { remoteId: b('id\"\\'), title: b('A \"quoted\" title'), artist: b('Artist\nName'), album: b('Album\tName'), durationSec: 231, coverUrl: b(''), fallbackPreviewUrl: b('') };
+  const parsed = JSON.parse(s(octaveLyricsBody(track)));
+  assert.equal(parsed.id, 'id\"\\');
+  assert.equal(parsed.title, 'A \"quoted\" title');
+  assert.equal(parsed.artist, 'Artist\nName');
+  assert.equal(parsed.album, 'Album\tName');
+  assert.equal(parsed.duration, 231);
+  assert.equal(parsed.source, 'deezer');
 });

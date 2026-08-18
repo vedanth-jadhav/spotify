@@ -178,6 +178,47 @@ function jsonStringAfter(bytes: Bytes, key: Bytes, from: number): Bytes {
   return new Uint8Array(0);
 }
 
+function jsonLyricsStringAfter(bytes: Bytes, key: Bytes, from: number): Bytes {
+  const keyAt = findFrom(bytes, key, from);
+  if (keyAt < 0) return new Uint8Array(0);
+  let i = keyAt + key.length;
+  while (i < bytes.length && bytes[i] !== 0x22) i += 1;
+  if (i >= bytes.length) return new Uint8Array(0);
+  i += 1;
+  const out = new Uint8Array(65536);
+  let size = 0;
+  while (i < bytes.length && size < out.length) {
+    const ch = bytes[i];
+    if (ch === 0x22) return out.slice(0, size);
+    if (ch === 0x5c && i + 1 < bytes.length) {
+      const escaped = bytes[i + 1];
+      if (escaped === 0x22 || escaped === 0x5c || escaped === 0x2f) out[size] = escaped;
+      else if (escaped === 0x6e) out[size] = 0x0a;
+      else if (escaped === 0x72) out[size] = 0x0d;
+      else if (escaped === 0x74) out[size] = 0x09;
+      else if (escaped === 0x75 && i + 5 < bytes.length) {
+        const h0 = bytes[i + 2]; const h1 = bytes[i + 3]; const h2 = bytes[i + 4]; const h3 = bytes[i + 5];
+        const validHex = (h0 >= 0x30 && h0 <= 0x39 || h0 >= 0x41 && h0 <= 0x46 || h0 >= 0x61 && h0 <= 0x66)
+          && (h1 >= 0x30 && h1 <= 0x39 || h1 >= 0x41 && h1 <= 0x46 || h1 >= 0x61 && h1 <= 0x66)
+          && (h2 >= 0x30 && h2 <= 0x39 || h2 >= 0x41 && h2 <= 0x46 || h2 >= 0x61 && h2 <= 0x66)
+          && (h3 >= 0x30 && h3 <= 0x39 || h3 >= 0x41 && h3 <= 0x46 || h3 >= 0x61 && h3 <= 0x66);
+        out[size] = 0x3f;
+        size += 1;
+        i += validHex ? 6 : 2;
+        continue;
+      }
+      else out[size] = 0x3f;
+      size += 1;
+      i += 2;
+    } else {
+      out[size] = ch;
+      size += 1;
+      i += 1;
+    }
+  }
+  return new Uint8Array(0);
+}
+
 function unsignedBytesAt(bytes: Bytes, at: number): Bytes {
   let start = at;
   while (start < bytes.length && (bytes[start] === 0x20 || bytes[start] === 0x3a)) start += 1;
@@ -198,6 +239,81 @@ function idBefore(bytes: Bytes, before: number): Bytes {
     cursor = next + key.length;
   }
   return found < 0 ? new Uint8Array(0) : unsignedBytesAt(bytes, found + key.length);
+}
+
+
+function jsonEscaped(input: Bytes): Bytes {
+  let extra = 0;
+  for (const ch of input) if (ch === 0x22 || ch === 0x5c || ch === 0x0a || ch === 0x0d || ch === 0x09) extra += 1;
+  const out = new Uint8Array(input.length + extra);
+  let at = 0;
+  for (const ch of input) {
+    if (ch === 0x22 || ch === 0x5c) { out[at] = 0x5c; out[at + 1] = ch; at += 2; }
+    else if (ch === 0x0a) { out[at] = 0x5c; out[at + 1] = 0x6e; at += 2; }
+    else if (ch === 0x0d) { out[at] = 0x5c; out[at + 1] = 0x72; at += 2; }
+    else if (ch === 0x09) { out[at] = 0x5c; out[at + 1] = 0x74; at += 2; }
+    else { out[at] = ch; at += 1; }
+  }
+  return out;
+}
+
+export function octaveLyricsBody(track: Track): Bytes {
+  const q = asciiBytes("\"");
+  const comma = asciiBytes(",");
+  const id = concat3(asciiBytes("{\"id\":"), q, concatBytes(jsonEscaped(track.remoteId), q));
+  const title = concat5(comma, asciiBytes("\"title\":"), q, jsonEscaped(track.title), q);
+  const artist = concat5(comma, asciiBytes("\"artist\":"), q, jsonEscaped(track.artist), q);
+  const album = concat5(comma, asciiBytes("\"album\":"), q, jsonEscaped(track.album), q);
+  const duration = concat3(comma, asciiBytes("\"duration\":"), decimalBytes(track.durationSec));
+  return concatBytes(concatBytes(concatBytes(id, title), concatBytes(artist, album)), concatBytes(duration, asciiBytes(",\"source\":\"deezer\"}")));
+}
+
+function isLrcTimestampTag(input: Bytes, start: number, end: number): boolean {
+  if (end <= start + 1 || end - start > 18) return false;
+  let sawColon = false;
+  let sawDigit = false;
+  for (let i = start + 1; i < end; i += 1) {
+    const ch = input[i];
+    if (ch >= 0x30 && ch <= 0x39) { sawDigit = true; continue; }
+    if (ch === 0x3a) { sawColon = true; continue; }
+    if (ch === 0x2e) continue;
+    return false;
+  }
+  return sawDigit && sawColon;
+}
+
+export function stripLrcTimestamps(input: Bytes): Bytes {
+  if (input.length === 0) return input;
+  const out = new Uint8Array(input.length);
+  let size = 0;
+  let i = 0;
+  while (i < input.length) {
+    if (input[i] === 0x5b) {
+      let close = i + 1;
+      let limit = i + 20;
+      if (limit > input.length) limit = input.length;
+      while (close < limit && input[close] !== 0x5d) close += 1;
+      if (close < limit && input[close] === 0x5d && isLrcTimestampTag(input, i, close)) {
+        i = close + 1;
+        if (i < input.length && input[i] === 0x20) i += 1;
+        continue;
+      }
+    }
+    out[size] = input[i];
+    size += 1;
+    i += 1;
+  }
+  return out.slice(0, size);
+}
+
+export function parseOctaveLyrics(body: Bytes): Bytes {
+  const synced = jsonLyricsStringAfter(body, asciiBytes("\"syncedLyrics\":"), 0);
+  if (synced.length > 0) return stripLrcTimestamps(synced);
+  const plain = jsonLyricsStringAfter(body, asciiBytes("\"plainLyrics\":"), 0);
+  if (plain.length > 0) return stripLrcTimestamps(plain);
+  const lyrics = jsonLyricsStringAfter(body, asciiBytes("\"lyrics\":"), 0);
+  if (lyrics.length > 0) return stripLrcTimestamps(lyrics);
+  return stripLrcTimestamps(jsonLyricsStringAfter(body, asciiBytes("\"text\":"), 0));
 }
 
 export function parseOctaveSearch(body: Bytes): readonly Track[] {
