@@ -1,0 +1,46 @@
+name: Finalize Spotify PR
+
+on:
+  push:
+    branches: [ci/finalize-spotify-pr]
+    paths: [.github/workflows/finalize-pr.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/spotify-ui-ux-final
+          fetch-depth: 0
+      - name: Remove temporary development workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f --ignore-unmatch \
+            .github/workflows/apply-review-fixes.yml \
+            .github/workflows/apply-review-fixes-v2.yml \
+            .github/workflows/apply-review-fixes-v3.yml \
+            .github/workflows/apply-review-fixes-v4.yml \
+            .github/workflows/apply-review-fixes-v5.yml \
+            .github/workflows/capture-pr-screens.yml \
+            .github/workflows/patch-repair.yml \
+            .github/workflows/repair-overhaul.yml \
+            .github/workflows/visual-polish.yml \
+            .github/workflows/visual-polish-v2.yml \
+            .github/workflows/visual-polish-v3.yml \
+            .github/workflows/visual-polish-v4.yml \
+            .github/workflows/visual-polish-v4b.yml
+      - name: Squash feature branch to one commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git config user.name spotify-ci
+          git config user.email spotify-ci@users.noreply.github.com
+          git reset --soft origin/main
+          git commit -m "feat: complete Spotify desktop UI/UX parity overhaul"
+          git push --force-with-lease origin HEAD:feat/spotify-ui-ux-final
