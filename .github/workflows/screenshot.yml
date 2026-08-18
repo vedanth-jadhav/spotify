@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: native-screenshot-feat-native-octave-client
+  group: native-screenshot-spotify-ui-overhaul
   cancel-in-progress: true
 
 permissions:
@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: feat/native-octave-client
+          ref: ci/spotify-ui-screenshot
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22.16.0
@@ -58,5 +58,5 @@ jobs:
           git config user.email "spotify-ci@users.noreply.github.com"
           git add docs/screenshots/home.png
           git diff --cached --quiet && exit 0
-          git commit -m "docs: capture dark native app home screen"
-          git push origin HEAD:feat/native-octave-client
+          git commit -m "docs: capture Spotify overhaul home screen"
+          git push origin HEAD:ci/spotify-ui-screenshot
