@@ -178,6 +178,47 @@ function jsonStringAfter(bytes: Bytes, key: Bytes, from: number): Bytes {
   return new Uint8Array(0);
 }
 
+function jsonLyricsStringAfter(bytes: Bytes, key: Bytes, from: number): Bytes {
+  const keyAt = findFrom(bytes, key, from);
+  if (keyAt < 0) return new Uint8Array(0);
+  let i = keyAt + key.length;
+  while (i < bytes.length && bytes[i] !== 0x22) i += 1;
+  if (i >= bytes.length) return new Uint8Array(0);
+  i += 1;
+  const out = new Uint8Array(65536);
+  let size = 0;
+  while (i < bytes.length && size < out.length) {
+    const ch = bytes[i];
+    if (ch === 0x22) return out.slice(0, size);
+    if (ch === 0x5c && i + 1 < bytes.length) {
+      const escaped = bytes[i + 1];
+      if (escaped === 0x22 || escaped === 0x5c || escaped === 0x2f) out[size] = escaped;
+      else if (escaped === 0x6e) out[size] = 0x0a;
+      else if (escaped === 0x72) out[size] = 0x0d;
+      else if (escaped === 0x74) out[size] = 0x09;
+      else if (escaped === 0x75 && i + 5 < bytes.length) {
+        const h0 = bytes[i + 2]; const h1 = bytes[i + 3]; const h2 = bytes[i + 4]; const h3 = bytes[i + 5];
+        const validHex = (h0 >= 0x30 && h0 <= 0x39 || h0 >= 0x41 && h0 <= 0x46 || h0 >= 0x61 && h0 <= 0x66)
+          && (h1 >= 0x30 && h1 <= 0x39 || h1 >= 0x41 && h1 <= 0x46 || h1 >= 0x61 && h1 <= 0x66)
+          && (h2 >= 0x30 && h2 <= 0x39 || h2 >= 0x41 && h2 <= 0x46 || h2 >= 0x61 && h2 <= 0x66)
+          && (h3 >= 0x30 && h3 <= 0x39 || h3 >= 0x41 && h3 <= 0x46 || h3 >= 0x61 && h3 <= 0x66);
+        out[size] = 0x3f;
+        size += 1;
+        i += validHex ? 6 : 2;
+        continue;
+      }
+      else out[size] = 0x3f;
+      size += 1;
+      i += 2;
+    } else {
+      out[size] = ch;
+      size += 1;
+      i += 1;
+    }
+  }
+  return new Uint8Array(0);
+}
+
 function unsignedBytesAt(bytes: Bytes, at: number): Bytes {
   let start = at;
   while (start < bytes.length && (bytes[start] === 0x20 || bytes[start] === 0x3a)) start += 1;
@@ -266,13 +307,13 @@ export function stripLrcTimestamps(input: Bytes): Bytes {
 }
 
 export function parseOctaveLyrics(body: Bytes): Bytes {
-  const synced = jsonStringAfter(body, asciiBytes("\"syncedLyrics\":"), 0);
+  const synced = jsonLyricsStringAfter(body, asciiBytes("\"syncedLyrics\":"), 0);
   if (synced.length > 0) return stripLrcTimestamps(synced);
-  const plain = jsonStringAfter(body, asciiBytes("\"plainLyrics\":"), 0);
+  const plain = jsonLyricsStringAfter(body, asciiBytes("\"plainLyrics\":"), 0);
   if (plain.length > 0) return stripLrcTimestamps(plain);
-  const lyrics = jsonStringAfter(body, asciiBytes("\"lyrics\":"), 0);
+  const lyrics = jsonLyricsStringAfter(body, asciiBytes("\"lyrics\":"), 0);
   if (lyrics.length > 0) return stripLrcTimestamps(lyrics);
-  return stripLrcTimestamps(jsonStringAfter(body, asciiBytes("\"text\":"), 0));
+  return stripLrcTimestamps(jsonLyricsStringAfter(body, asciiBytes("\"text\":"), 0));
 }
 
 export function parseOctaveSearch(body: Bytes): readonly Track[] {
