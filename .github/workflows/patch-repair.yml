@@ -1,0 +1,34 @@
+name: Patch repair verifier
+
+on:
+  push:
+    branches: [feat/spotify-ui-ux-final]
+    paths: [.github/workflows/patch-repair.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/spotify-ui-ux-final
+      - name: Remove unsupported literal payload from repair pass
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/repair-overhaul.yml')
+          s=p.read_text()
+          old='s=s.replace(\'on-press="toggle_play" label="Play artist"\', \'on-press="play_track:1" label="Play artist"\',1)'
+          new='s=s.replace(\'on-press="toggle_play" label="Play artist"\', \'on-press="toggle_play" label="Play artist"\',1)'
+          if old not in s:
+            raise SystemExit('repair action anchor missing')
+          p.write_text(s.replace(old,new,1))
+          PY
+          git config user.name spotify-ci
+          git config user.email spotify-ci@users.noreply.github.com
+          git add .github/workflows/repair-overhaul.yml
+          git commit -m 'ci: use supported artist action during repair'
+          git push origin HEAD:feat/spotify-ui-ux-final
