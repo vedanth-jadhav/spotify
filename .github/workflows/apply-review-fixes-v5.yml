@@ -1,0 +1,54 @@
+name: Apply reviewed Spotify UX fixes v5
+
+on:
+  push:
+    branches: [feat/spotify-ui-ux-final]
+    paths: [.github/workflows/apply-review-fixes-v5.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/spotify-ui-ux-final
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.16.0
+      - name: Apply reviewed fixes with literal-safe caret mapping
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+          workflow = Path('.github/workflows/apply-review-fixes.yml').read_text()
+          script = dedent(workflow.split("python3 - <<'PY'\n", 1)[1].split('\n          PY', 1)[0])
+          exec(compile(script, 'review-fixes.py', 'exec'))
+
+          p = Path('src/core.ts')
+          s = p.read_text()
+          old = '''function artistModel(model: Model, track: Track): Model {\n  const raw = track.artist;\n  const q = raw.length > MAX_SEARCH ? raw.slice(0, MAX_SEARCH) : raw;\n  const caret = q.length <= MAX_SEARCH ? Math.trunc(q.length) : MAX_SEARCH;\n  const search = { bytes: q, anchor: caret, focus: caret, compStart: -1, compEnd: -1 };\n  const base = navigate(model, "artist");\n  return { ...base, search: search, searchPhase: "loading_octave", errorText: new Uint8Array(0) };\n}\n'''
+          cases = []
+          for i in range(96):
+              cases.append(f'    case {i}: return {{ bytes: bytes, anchor: {i}, focus: {i}, compStart: -1, compEnd: -1 }};')
+          helper = 'function draftAtByteEnd(bytes: Bytes): Draft {\n  switch (bytes.length) {\n' + '\n'.join(cases) + '\n    default: return { bytes: bytes, anchor: 96, focus: 96, compStart: -1, compEnd: -1 };\n  }\n}\n\n'
+          new = '''function artistModel(model: Model, track: Track): Model {\n  const raw = track.artist;\n  const q = raw.length > MAX_SEARCH ? raw.slice(0, MAX_SEARCH) : raw;\n  const search = draftAtByteEnd(q);\n  const base = navigate(model, "artist");\n  return { ...base, search: search, searchPhase: "loading_octave", errorText: new Uint8Array(0) };\n}\n'''
+          if old not in s:
+              raise SystemExit('artistModel transformed anchor missing')
+          p.write_text(s.replace(old, helper + new, 1))
+          PY
+      - run: npm ci
+      - run: npx --no-install native check --yes
+      - run: npm run test:unit
+      - run: npx --no-install native test --yes
+      - name: Commit reviewed fixes
+        run: |
+          git config user.name spotify-ci
+          git config user.email spotify-ci@users.noreply.github.com
+          git add src/core.ts src/provider.ts src/app.native tests/core.test.ts tests/provider.test.ts scripts/smoke-octave.mjs
+          git commit -m 'fix: harden lyrics, artist flows and accessibility'
+          git push origin HEAD:feat/spotify-ui-ux-final
