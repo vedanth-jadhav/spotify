@@ -1,0 +1,88 @@
+name: Apply final Spotify density pass
+
+on:
+  push:
+    branches: [feat/spotify-ui-ux-final]
+    paths: [.github/workflows/visual-polish-v4.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: macos-15
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/spotify-ui-ux-final
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+      - name: Apply final visual density pass
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p=Path('src/core.ts'); s=p.read_text()
+          s=s.replace('''  readonly duration: Bytes;\n  readonly active: boolean;\n  readonly liked: boolean;''','''  readonly duration: Bytes;\n  readonly artA: boolean;\n  readonly artB: boolean;\n  readonly artC: boolean;\n  readonly artD: boolean;\n  readonly artE: boolean;\n  readonly artF: boolean;\n  readonly active: boolean;\n  readonly liked: boolean;''',1)
+
+          def add_flags(record):
+              needle='duration: formatSeconds('
+              pos=record.find(needle)
+              if pos < 0: return record
+              # Insert flags immediately before active: in all row records.
+              return record.replace(', active:', ', artA: index % 6 === 0, artB: index % 6 === 1, artC: index % 6 === 2, artD: index % 6 === 3, artE: index % 6 === 4, artF: index % 6 === 5, active:',1)
+
+          for old in [
+            'return { id: id, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: sameTrack(track, model.nowTrack), liked: isLiked(model, id) };',
+            'return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: sameTrack(track, model.nowTrack), liked: true };',
+            'return { id: index + 1, title: item.track.title, artist: item.track.artist, album: item.track.album, duration: formatSeconds(item.track.durationSec), active: sameTrack(item.track, model.nowTrack), liked: trackIn(model.likedTracks, item.track) };',
+            'return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: sameTrack(track, model.nowTrack), liked: trackIn(model.likedTracks, track) };'
+          ]:
+              if old not in s: raise SystemExit('TrackRow anchor missing: '+old[:55])
+              s=s.replace(old,add_flags(old),1)
+
+          insert='''\nexport function hasSearchResults(model: Model): boolean { return model.tracks.length > 0; }\nexport function topResultTitle(model: Model): Bytes { return model.tracks.length > 0 ? model.tracks[0].title : asciiBytes("No result"); }\nexport function topResultArtist(model: Model): Bytes { return model.tracks.length > 0 ? model.tracks[0].artist : new Uint8Array(0); }\nexport function topResultAlbum(model: Model): Bytes { return model.tracks.length > 0 ? model.tracks[0].album : new Uint8Array(0); }\n'''
+          anchor='export function hasPlaylist(model: Model): boolean { return model.playlistCreated; }\n'
+          if 'export function topResultTitle' not in s: s=s.replace(anchor,anchor+insert,1)
+          p.write_text(s)
+
+          p=Path('src/app.native'); s=p.read_text()
+          s=s.replace('<grid columns="2" gap="8">','<grid columns="3" gap="8">',1)
+          s=s.replace('<span scale="2.35">Liked Songs</span>','<span scale="3.15">Liked Songs</span>',1)
+          s=s.replace('<span scale="2.35">My Playlist</span>','<span scale="3.15">My Playlist</span>',1)
+          s=s.replace('<span scale="2.7">{artistName}</span>','<span scale="3.05">{artistName}</span>',1)
+
+          art48='''<if test="{t.artA}"><image image="17" width="48" height="48" label="Track artwork" /></if><if test="{t.artB}"><image image="14" width="48" height="48" label="Track artwork" /></if><if test="{t.artC}"><image image="15" width="48" height="48" label="Track artwork" /></if><if test="{t.artD}"><image image="16" width="48" height="48" label="Track artwork" /></if><if test="{t.artE}"><image image="24" width="48" height="48" label="Track artwork" /></if><if test="{t.artF}"><image image="25" width="48" height="48" label="Track artwork" /></if>'''
+          art44='''<if test="{t.artA}"><image image="17" width="44" height="44" label="Track artwork" /></if><if test="{t.artB}"><image image="14" width="44" height="44" label="Track artwork" /></if><if test="{t.artC}"><image image="15" width="44" height="44" label="Track artwork" /></if><if test="{t.artD}"><image image="16" width="44" height="44" label="Track artwork" /></if><if test="{t.artE}"><image image="24" width="44" height="44" label="Track artwork" /></if><if test="{t.artF}"><image image="25" width="44" height="44" label="Track artwork" /></if>'''
+          generic48='<panel width="48" height="48" radius="sm" background="surface_pressed"><row grow="1" main="center" cross="center"><icon name="music" width="18" height="18"></icon></row></panel>'
+          generic44='<panel width="44" height="44" radius="sm" background="surface_pressed"><row grow="1" main="center" cross="center"><icon name="music" width="18" height="18" foreground="text_muted"></icon></row></panel>'
+          s=s.replace(generic48,art48)
+          s=s.replace(generic44,art44)
+
+          # Add artwork to playlist/liked/artist/queue rows, which previously had only text.
+          s=s.replace('<text width="26" foreground="text_muted">{t.id}</text><column grow="1" gap="3"><text>{t.title}</text><text size="sm" foreground="text_muted">{t.artist}</text></column>', '<text width="26" foreground="text_muted">{t.id}</text>'+art48+'<column grow="1" gap="3"><text>{t.title}</text><text size="sm" foreground="text_muted">{t.artist}</text></column>')
+          s=s.replace('<text width="26" foreground="text_muted">{t.id}</text><column grow="1" gap="3"><text>{t.title}</text><text size="sm" foreground="text_muted">{t.album}</text></column>', '<text width="26" foreground="text_muted">{t.id}</text>'+art48+'<column grow="1" gap="3"><text>{t.title}</text><text size="sm" foreground="text_muted">{t.album}</text></column>')
+
+          # Spotify-like search hierarchy: a prominent top-result card before the song table.
+          search_anchor='<if test="{searchReady}"><text><span scale="1.45">Songs</span></text><list role="list" label="Search results">'
+          search_new='''<if test="{searchReady}"><if test="{hasSearchResults}"><row gap="18"><panel width="360" padding="18" background="surface_subtle" radius="lg"><column gap="10"><text><span scale="1.25">Top result</span></text><image image="17" width="126" height="126" label="Top result artwork" /><text><span scale="1.55">{topResultTitle}</span></text><text foreground="text_muted">{topResultArtist} · {topResultAlbum}</text></column></panel><panel grow="1" padding="18" background="surface_subtle" radius="lg"><column gap="8"><text><span scale="1.25">Songs</span></text><text foreground="text_muted">Play a result, open its artist, save it, or add it to your playlist from the row menu.</text></column></panel></row></if><text><span scale="1.45">Songs</span></text><list role="list" label="Search results">'''
+          if search_anchor not in s: raise SystemExit('search ready anchor missing')
+          s=s.replace(search_anchor,search_new,1)
+
+          p.write_text(s)
+          PY
+      - run: npm ci
+      - run: npx --no-install native check --yes
+      - run: npm run test:unit
+      - run: npx --no-install native test --yes
+      - name: Commit final density pass
+        run: |
+          git config user.name spotify-ci
+          git config user.email spotify-ci@users.noreply.github.com
+          git add src/core.ts src/app.native
+          git commit -m 'feat: refine Spotify density, artwork rows and search hierarchy'
+          git push origin HEAD:feat/spotify-ui-ux-final
