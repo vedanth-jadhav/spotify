@@ -1,0 +1,75 @@
+name: Consolidate verified Spotify overhaul
+
+on:
+  push:
+    branches: [ci/consolidate-spotify-final]
+  workflow_dispatch:
+
+concurrency:
+  group: consolidate-spotify-ui-final
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate-and-verify:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ci/consolidate-spotify-final
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.16.0
+
+      - name: Build one clean product commit from verified source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE=b2b7ecbaa3db3625104c07900f18308d2bb89f10
+          git fetch origin main
+          git checkout -B feat/spotify-ui-ux-final origin/main
+          git checkout "$SOURCE" -- \
+            src/app.native \
+            src/core.ts \
+            src/provider.ts \
+            tests/provider.test.ts \
+            scripts/patch-native-sdk.mjs \
+            docs/screenshots/home.png \
+            docs/screenshots/search.png \
+            docs/screenshots/liked-songs.png \
+            docs/screenshots/playlist.png \
+            docs/screenshots/lyrics.png \
+            docs/screenshots/artist.png
+
+      - name: Install
+        run: npm ci
+
+      - name: Final full verification
+        run: npm run verify
+
+      - name: Commit once and publish final branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "spotify-ci"
+          git config user.email "spotify-ci@users.noreply.github.com"
+          git add \
+            src/app.native \
+            src/core.ts \
+            src/provider.ts \
+            tests/provider.test.ts \
+            scripts/patch-native-sdk.mjs \
+            docs/screenshots/home.png \
+            docs/screenshots/search.png \
+            docs/screenshots/liked-songs.png \
+            docs/screenshots/playlist.png \
+            docs/screenshots/lyrics.png \
+            docs/screenshots/artist.png
+          git diff --cached --quiet && { echo "No product changes to publish"; exit 1; }
+          git commit -m "feat: complete Spotify desktop UI/UX parity overhaul"
+          test "$(git rev-list --count origin/main..HEAD)" = "1"
+          git push --force-with-lease origin HEAD:feat/spotify-ui-ux-final
