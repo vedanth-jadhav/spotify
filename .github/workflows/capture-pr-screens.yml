@@ -96,7 +96,7 @@ jobs:
           play_first_catalog_row
           shot search
 
-          click button 'Now playing'
+          click button 'Now playing view'
           shot now-playing
           click button Close
 
