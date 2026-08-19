@@ -53,14 +53,19 @@ jobs:
           cat > /tmp/release-notes.md <<'NOTES'
           Native Spotify-style desktop music client backed by Octave Streaming.
 
+          This release includes the merged Spotify desktop UI/UX parity overhaul, Octave-backed search and playback, persistent library state, playlists, lyrics, artist navigation, queue, quality controls, and the native macOS release package.
+
           This build targets Apple-silicon Macs and is ad-hoc signed. Because it is not notarized with an Apple Developer ID, macOS may show the normal unidentified-developer/Gatekeeper warning for downloaded builds. Control-click the app and choose Open on first launch if required.
           NOTES
 
+          # Recreate the release/tag so the published v0.1.0 metadata and tag always
+          # point at the exact commit that produced the DMG instead of silently
+          # clobbering assets on an older tag.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$DMG" "$CHECKSUM" --clobber
-          else
-            gh release create "$TAG" "$DMG" "$CHECKSUM" \
-              --target "$GITHUB_SHA" \
-              --title "Spotify 0.1.0" \
-              --notes-file /tmp/release-notes.md
+            gh release delete "$TAG" --yes --cleanup-tag
           fi
+
+          gh release create "$TAG" "$DMG" "$CHECKSUM" \
+            --target "$GITHUB_SHA" \
+            --title "Spotify 0.1.0" \
+            --notes-file /tmp/release-notes.md
