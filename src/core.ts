@@ -1,10 +1,10 @@
 import { Cmd, Sub, asciiBytes } from "@native-sdk/core";
 import { applyTextInputEvent, clampedInsertEvent, type TextEditState, type TextInputEvent } from "@native-sdk/core/text";
 import { type AudioState } from "@native-sdk/core/events";
-import { deezerSearchFallbackUrl, formatSeconds, octaveResolveUrlWithQuality, octaveSearchUrl, octaveTrackRadioUrl, octaveTrendingUrl, parseDeezerSearch, parseOctaveResolve, parseOctaveSearch, type Bytes, type OctaveQuality, type Track } from "./provider.ts";
+import { deezerSearchFallbackUrl, formatSeconds, octaveLyricsBody, octaveLyricsUrl, octaveResolveUrlWithQuality, octaveSearchUrl, octaveTrackRadioUrl, octaveTrendingUrl, parseDeezerSearch, parseOctaveLyrics, parseOctaveResolve, parseOctaveSearch, type Bytes, type OctaveQuality, type Track } from "./provider.ts";
 import { decodeState, encodeState, type PersistedState } from "./persistence.ts";
 
-export type Page = "home" | "search" | "library" | "lyrics" | "queue" | "settings" | "notifications" | "playlist" | "premium";
+export type Page = "home" | "search" | "library" | "lyrics" | "artist" | "queue" | "settings" | "notifications" | "playlist" | "premium";
 export type RepeatMode = "off" | "context" | "one";
 export type SearchPhase = "idle" | "debouncing" | "loading_octave" | "loading_fallback" | "ready" | "failed";
 export type ImageState =
@@ -38,6 +38,21 @@ export interface Model {
   readonly nowTrack: Track;
   readonly coverImage: number;
   readonly coverRequestId: number;
+  readonly artLiked: number;
+  readonly artPlaylist: number;
+  readonly artDiscover: number;
+  readonly artMix1: number;
+  readonly artMix2: number;
+  readonly artChill: number;
+  readonly artTrending: number;
+  readonly artRelease: number;
+  readonly artParty: number;
+  readonly artFocus: number;
+  readonly artWorkout: number;
+  readonly artClassical: number;
+  readonly artArtist: number;
+  readonly artPop: number;
+  readonly artHiphop: number;
   readonly queue: readonly QueueItem[];
   readonly showNowPlaying: boolean;
   readonly autoplay: boolean;
@@ -56,6 +71,11 @@ export interface Model {
   readonly shuffle: boolean;
   readonly shuffleSeed: number;
   readonly repeat: RepeatMode;
+  readonly lyricsText: Bytes;
+  readonly lyricsLoading: boolean;
+  readonly lyricsResolved: boolean;
+  readonly lyricsTrackId: Bytes;
+  readonly lyricsErrorText: Bytes;
   readonly errorText: Bytes;
 }
 
@@ -65,6 +85,12 @@ export interface TrackRow {
   readonly artist: Bytes;
   readonly album: Bytes;
   readonly duration: Bytes;
+  readonly artA: boolean;
+  readonly artB: boolean;
+  readonly artC: boolean;
+  readonly artD: boolean;
+  readonly artE: boolean;
+  readonly artF: boolean;
   readonly active: boolean;
   readonly liked: boolean;
 }
@@ -74,6 +100,8 @@ export type Msg =
   | { readonly kind: "go_search" }
   | { readonly kind: "go_library" }
   | { readonly kind: "go_lyrics" }
+  | { readonly kind: "open_now_artist" }
+  | { readonly kind: "go_track_artist"; readonly artistTrackId: number }
   | { readonly kind: "go_queue" }
   | { readonly kind: "go_settings" }
   | { readonly kind: "go_notifications" }
@@ -96,6 +124,8 @@ export type Msg =
   | { readonly kind: "octave_search_failed"; readonly reason: Bytes }
   | { readonly kind: "fallback_search_done"; readonly status: number; readonly body: Bytes }
   | { readonly kind: "fallback_search_failed"; readonly reason: Bytes }
+  | { readonly kind: "lyrics_done"; readonly status: number; readonly body: Bytes }
+  | { readonly kind: "lyrics_failed"; readonly reason: Bytes }
   | { readonly kind: "resolve_track_done"; readonly status: number; readonly body: Bytes }
   | { readonly kind: "resolve_track_failed"; readonly reason: Bytes }
   | { readonly kind: "cover_done"; readonly id: number; readonly state: ImageState; readonly width: number; readonly height: number; readonly status: number }
@@ -108,6 +138,7 @@ export type Msg =
   | { readonly kind: "state_save_failed"; readonly reason: Bytes }
   | { readonly kind: "play_track"; readonly playTrackId: number }
   | { readonly kind: "toggle_play" }
+  | { readonly kind: "play_artist" }
   | { readonly kind: "play_liked" }
   | { readonly kind: "play_liked_track"; readonly likedTrackId: number }
   | { readonly kind: "play_playlist" }
@@ -140,7 +171,7 @@ export type Msg =
   | { readonly kind: "clock_tick"; readonly at: number };
 
 export const viewUnbound = [
-  "search_fire", "octave_search_done", "octave_search_failed", "fallback_search_done", "fallback_search_failed", "resolve_track_done", "resolve_track_failed", "cover_done", "radio_done", "radio_failed", "state_loaded", "state_load_failed", "state_saved", "state_save_failed", "audio_event", "clock_tick",
+  "search_fire", "octave_search_done", "octave_search_failed", "fallback_search_done", "fallback_search_failed", "lyrics_done", "lyrics_failed", "resolve_track_done", "resolve_track_failed", "cover_done", "radio_done", "radio_failed", "state_loaded", "state_load_failed", "state_saved", "state_save_failed", "audio_event", "clock_tick",
 ] as const;
 
 const MAX_SEARCH = 96;
@@ -211,8 +242,23 @@ export function freshModel(): Model {
     nowTrack: emptyTrack(),
     coverImage: 0,
     coverRequestId: 0,
+    artLiked: 11,
+    artPlaylist: 12,
+    artDiscover: 13,
+    artMix1: 14,
+    artMix2: 15,
+    artChill: 16,
+    artTrending: 17,
+    artRelease: 18,
+    artParty: 19,
+    artFocus: 20,
+    artWorkout: 21,
+    artClassical: 22,
+    artArtist: 23,
+    artPop: 24,
+    artHiphop: 25,
     queue: [],
-    showNowPlaying: true,
+    showNowPlaying: false,
     autoplay: true,
     quality: "q320",
     playlistCreated: false,
@@ -229,6 +275,11 @@ export function freshModel(): Model {
     shuffle: false,
     shuffleSeed: 1,
     repeat: "off",
+    lyricsText: new Uint8Array(0),
+    lyricsLoading: false,
+    lyricsResolved: false,
+    lyricsTrackId: new Uint8Array(0),
+    lyricsErrorText: new Uint8Array(0),
     errorText: new Uint8Array(0),
   };
 }
@@ -339,8 +390,123 @@ function startTrack(model: Model, id: number, track: Track, context: readonly Tr
     audioReady: false,
     positionMs: 0,
     durationMs: seconds * 1000,
+    lyricsText: sameTrack(model.nowTrack, track) ? model.lyricsText : new Uint8Array(0),
+    lyricsLoading: false,
+    lyricsResolved: sameTrack(model.nowTrack, track) ? model.lyricsResolved : false,
+    lyricsTrackId: sameTrack(model.nowTrack, track) ? model.lyricsTrackId : new Uint8Array(0),
+    lyricsErrorText: sameTrack(model.nowTrack, track) ? model.lyricsErrorText : new Uint8Array(0),
     errorText: new Uint8Array(0),
   };
+}
+
+function draftAtByteEnd(bytes: Bytes): Draft {
+  switch (bytes.length) {
+    case 0: return { bytes: bytes, anchor: 0, focus: 0, compStart: -1, compEnd: -1 };
+    case 1: return { bytes: bytes, anchor: 1, focus: 1, compStart: -1, compEnd: -1 };
+    case 2: return { bytes: bytes, anchor: 2, focus: 2, compStart: -1, compEnd: -1 };
+    case 3: return { bytes: bytes, anchor: 3, focus: 3, compStart: -1, compEnd: -1 };
+    case 4: return { bytes: bytes, anchor: 4, focus: 4, compStart: -1, compEnd: -1 };
+    case 5: return { bytes: bytes, anchor: 5, focus: 5, compStart: -1, compEnd: -1 };
+    case 6: return { bytes: bytes, anchor: 6, focus: 6, compStart: -1, compEnd: -1 };
+    case 7: return { bytes: bytes, anchor: 7, focus: 7, compStart: -1, compEnd: -1 };
+    case 8: return { bytes: bytes, anchor: 8, focus: 8, compStart: -1, compEnd: -1 };
+    case 9: return { bytes: bytes, anchor: 9, focus: 9, compStart: -1, compEnd: -1 };
+    case 10: return { bytes: bytes, anchor: 10, focus: 10, compStart: -1, compEnd: -1 };
+    case 11: return { bytes: bytes, anchor: 11, focus: 11, compStart: -1, compEnd: -1 };
+    case 12: return { bytes: bytes, anchor: 12, focus: 12, compStart: -1, compEnd: -1 };
+    case 13: return { bytes: bytes, anchor: 13, focus: 13, compStart: -1, compEnd: -1 };
+    case 14: return { bytes: bytes, anchor: 14, focus: 14, compStart: -1, compEnd: -1 };
+    case 15: return { bytes: bytes, anchor: 15, focus: 15, compStart: -1, compEnd: -1 };
+    case 16: return { bytes: bytes, anchor: 16, focus: 16, compStart: -1, compEnd: -1 };
+    case 17: return { bytes: bytes, anchor: 17, focus: 17, compStart: -1, compEnd: -1 };
+    case 18: return { bytes: bytes, anchor: 18, focus: 18, compStart: -1, compEnd: -1 };
+    case 19: return { bytes: bytes, anchor: 19, focus: 19, compStart: -1, compEnd: -1 };
+    case 20: return { bytes: bytes, anchor: 20, focus: 20, compStart: -1, compEnd: -1 };
+    case 21: return { bytes: bytes, anchor: 21, focus: 21, compStart: -1, compEnd: -1 };
+    case 22: return { bytes: bytes, anchor: 22, focus: 22, compStart: -1, compEnd: -1 };
+    case 23: return { bytes: bytes, anchor: 23, focus: 23, compStart: -1, compEnd: -1 };
+    case 24: return { bytes: bytes, anchor: 24, focus: 24, compStart: -1, compEnd: -1 };
+    case 25: return { bytes: bytes, anchor: 25, focus: 25, compStart: -1, compEnd: -1 };
+    case 26: return { bytes: bytes, anchor: 26, focus: 26, compStart: -1, compEnd: -1 };
+    case 27: return { bytes: bytes, anchor: 27, focus: 27, compStart: -1, compEnd: -1 };
+    case 28: return { bytes: bytes, anchor: 28, focus: 28, compStart: -1, compEnd: -1 };
+    case 29: return { bytes: bytes, anchor: 29, focus: 29, compStart: -1, compEnd: -1 };
+    case 30: return { bytes: bytes, anchor: 30, focus: 30, compStart: -1, compEnd: -1 };
+    case 31: return { bytes: bytes, anchor: 31, focus: 31, compStart: -1, compEnd: -1 };
+    case 32: return { bytes: bytes, anchor: 32, focus: 32, compStart: -1, compEnd: -1 };
+    case 33: return { bytes: bytes, anchor: 33, focus: 33, compStart: -1, compEnd: -1 };
+    case 34: return { bytes: bytes, anchor: 34, focus: 34, compStart: -1, compEnd: -1 };
+    case 35: return { bytes: bytes, anchor: 35, focus: 35, compStart: -1, compEnd: -1 };
+    case 36: return { bytes: bytes, anchor: 36, focus: 36, compStart: -1, compEnd: -1 };
+    case 37: return { bytes: bytes, anchor: 37, focus: 37, compStart: -1, compEnd: -1 };
+    case 38: return { bytes: bytes, anchor: 38, focus: 38, compStart: -1, compEnd: -1 };
+    case 39: return { bytes: bytes, anchor: 39, focus: 39, compStart: -1, compEnd: -1 };
+    case 40: return { bytes: bytes, anchor: 40, focus: 40, compStart: -1, compEnd: -1 };
+    case 41: return { bytes: bytes, anchor: 41, focus: 41, compStart: -1, compEnd: -1 };
+    case 42: return { bytes: bytes, anchor: 42, focus: 42, compStart: -1, compEnd: -1 };
+    case 43: return { bytes: bytes, anchor: 43, focus: 43, compStart: -1, compEnd: -1 };
+    case 44: return { bytes: bytes, anchor: 44, focus: 44, compStart: -1, compEnd: -1 };
+    case 45: return { bytes: bytes, anchor: 45, focus: 45, compStart: -1, compEnd: -1 };
+    case 46: return { bytes: bytes, anchor: 46, focus: 46, compStart: -1, compEnd: -1 };
+    case 47: return { bytes: bytes, anchor: 47, focus: 47, compStart: -1, compEnd: -1 };
+    case 48: return { bytes: bytes, anchor: 48, focus: 48, compStart: -1, compEnd: -1 };
+    case 49: return { bytes: bytes, anchor: 49, focus: 49, compStart: -1, compEnd: -1 };
+    case 50: return { bytes: bytes, anchor: 50, focus: 50, compStart: -1, compEnd: -1 };
+    case 51: return { bytes: bytes, anchor: 51, focus: 51, compStart: -1, compEnd: -1 };
+    case 52: return { bytes: bytes, anchor: 52, focus: 52, compStart: -1, compEnd: -1 };
+    case 53: return { bytes: bytes, anchor: 53, focus: 53, compStart: -1, compEnd: -1 };
+    case 54: return { bytes: bytes, anchor: 54, focus: 54, compStart: -1, compEnd: -1 };
+    case 55: return { bytes: bytes, anchor: 55, focus: 55, compStart: -1, compEnd: -1 };
+    case 56: return { bytes: bytes, anchor: 56, focus: 56, compStart: -1, compEnd: -1 };
+    case 57: return { bytes: bytes, anchor: 57, focus: 57, compStart: -1, compEnd: -1 };
+    case 58: return { bytes: bytes, anchor: 58, focus: 58, compStart: -1, compEnd: -1 };
+    case 59: return { bytes: bytes, anchor: 59, focus: 59, compStart: -1, compEnd: -1 };
+    case 60: return { bytes: bytes, anchor: 60, focus: 60, compStart: -1, compEnd: -1 };
+    case 61: return { bytes: bytes, anchor: 61, focus: 61, compStart: -1, compEnd: -1 };
+    case 62: return { bytes: bytes, anchor: 62, focus: 62, compStart: -1, compEnd: -1 };
+    case 63: return { bytes: bytes, anchor: 63, focus: 63, compStart: -1, compEnd: -1 };
+    case 64: return { bytes: bytes, anchor: 64, focus: 64, compStart: -1, compEnd: -1 };
+    case 65: return { bytes: bytes, anchor: 65, focus: 65, compStart: -1, compEnd: -1 };
+    case 66: return { bytes: bytes, anchor: 66, focus: 66, compStart: -1, compEnd: -1 };
+    case 67: return { bytes: bytes, anchor: 67, focus: 67, compStart: -1, compEnd: -1 };
+    case 68: return { bytes: bytes, anchor: 68, focus: 68, compStart: -1, compEnd: -1 };
+    case 69: return { bytes: bytes, anchor: 69, focus: 69, compStart: -1, compEnd: -1 };
+    case 70: return { bytes: bytes, anchor: 70, focus: 70, compStart: -1, compEnd: -1 };
+    case 71: return { bytes: bytes, anchor: 71, focus: 71, compStart: -1, compEnd: -1 };
+    case 72: return { bytes: bytes, anchor: 72, focus: 72, compStart: -1, compEnd: -1 };
+    case 73: return { bytes: bytes, anchor: 73, focus: 73, compStart: -1, compEnd: -1 };
+    case 74: return { bytes: bytes, anchor: 74, focus: 74, compStart: -1, compEnd: -1 };
+    case 75: return { bytes: bytes, anchor: 75, focus: 75, compStart: -1, compEnd: -1 };
+    case 76: return { bytes: bytes, anchor: 76, focus: 76, compStart: -1, compEnd: -1 };
+    case 77: return { bytes: bytes, anchor: 77, focus: 77, compStart: -1, compEnd: -1 };
+    case 78: return { bytes: bytes, anchor: 78, focus: 78, compStart: -1, compEnd: -1 };
+    case 79: return { bytes: bytes, anchor: 79, focus: 79, compStart: -1, compEnd: -1 };
+    case 80: return { bytes: bytes, anchor: 80, focus: 80, compStart: -1, compEnd: -1 };
+    case 81: return { bytes: bytes, anchor: 81, focus: 81, compStart: -1, compEnd: -1 };
+    case 82: return { bytes: bytes, anchor: 82, focus: 82, compStart: -1, compEnd: -1 };
+    case 83: return { bytes: bytes, anchor: 83, focus: 83, compStart: -1, compEnd: -1 };
+    case 84: return { bytes: bytes, anchor: 84, focus: 84, compStart: -1, compEnd: -1 };
+    case 85: return { bytes: bytes, anchor: 85, focus: 85, compStart: -1, compEnd: -1 };
+    case 86: return { bytes: bytes, anchor: 86, focus: 86, compStart: -1, compEnd: -1 };
+    case 87: return { bytes: bytes, anchor: 87, focus: 87, compStart: -1, compEnd: -1 };
+    case 88: return { bytes: bytes, anchor: 88, focus: 88, compStart: -1, compEnd: -1 };
+    case 89: return { bytes: bytes, anchor: 89, focus: 89, compStart: -1, compEnd: -1 };
+    case 90: return { bytes: bytes, anchor: 90, focus: 90, compStart: -1, compEnd: -1 };
+    case 91: return { bytes: bytes, anchor: 91, focus: 91, compStart: -1, compEnd: -1 };
+    case 92: return { bytes: bytes, anchor: 92, focus: 92, compStart: -1, compEnd: -1 };
+    case 93: return { bytes: bytes, anchor: 93, focus: 93, compStart: -1, compEnd: -1 };
+    case 94: return { bytes: bytes, anchor: 94, focus: 94, compStart: -1, compEnd: -1 };
+    case 95: return { bytes: bytes, anchor: 95, focus: 95, compStart: -1, compEnd: -1 };
+    default: return { bytes: bytes, anchor: 96, focus: 96, compStart: -1, compEnd: -1 };
+  }
+}
+
+function artistModel(model: Model, track: Track): Model {
+  const raw = track.artist;
+  const q = raw.length > MAX_SEARCH ? raw.slice(0, MAX_SEARCH) : raw;
+  const search = draftAtByteEnd(q);
+  const base = navigate(model, "artist");
+  return { ...base, search: search, searchPhase: "loading_octave", errorText: new Uint8Array(0) };
 }
 
 export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
@@ -348,7 +514,24 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
     case "go_home": return [navigate(model, "home"), Cmd.none];
     case "go_search": return [navigate(model, "search"), Cmd.none];
     case "go_library": return [navigate(model, "library"), Cmd.none];
-    case "go_lyrics": return [navigate(model, "lyrics"), Cmd.none];
+    case "go_lyrics": {
+      const track = currentTrack(model);
+      const next = navigate(model, "lyrics");
+      if (track === undefined) return [{ ...next, lyricsLoading: false, lyricsText: new Uint8Array(0), lyricsResolved: false, lyricsTrackId: new Uint8Array(0), lyricsErrorText: new Uint8Array(0) }, Cmd.none];
+      if (model.lyricsLoading && bytesSame(model.lyricsTrackId, track.remoteId)) return [next, Cmd.none];
+      if (model.lyricsResolved && bytesSame(model.lyricsTrackId, track.remoteId)) return [next, Cmd.none];
+      return [{ ...next, lyricsLoading: true, lyricsText: new Uint8Array(0), lyricsResolved: false, lyricsTrackId: track.remoteId, lyricsErrorText: new Uint8Array(0) }, Cmd.fetch({ url: octaveLyricsUrl(), method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: octaveLyricsBody(track), timeoutMs: 10000 }, { key: "lyrics", ok: "lyrics_done", err: "lyrics_failed" })];
+    }
+    case "open_now_artist": {
+      const track = currentTrack(model);
+      if (track === undefined) return [model, Cmd.none];
+      return [artistModel(model, track), Cmd.fetch({ url: octaveSearchUrl(track.artist), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "search", ok: "octave_search_done", err: "octave_search_failed" })];
+    }
+    case "go_track_artist": {
+      const track = trackById(model, msg.artistTrackId);
+      if (track === undefined) return [model, Cmd.none];
+      return [artistModel(model, track), Cmd.fetch({ url: octaveSearchUrl(track.artist), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "search", ok: "octave_search_done", err: "octave_search_failed" })];
+    }
     case "go_queue": return [navigate(model, "queue"), Cmd.none];
     case "go_settings": return [navigate(model, "settings"), Cmd.none];
     case "go_notifications": return [navigate(model, "notifications"), Cmd.none];
@@ -419,6 +602,19 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return [{ ...model, tracks: parsed, searchPhase: "ready", errorText: new Uint8Array(0) }, Cmd.none];
     }
     case "fallback_search_failed": return [{ ...model, tracks: [], searchPhase: "failed", errorText: msg.reason }, Cmd.none];
+    case "lyrics_done": {
+      const track = currentTrack(model);
+      if (track === undefined || model.lyricsTrackId.length === 0 || !bytesSame(model.lyricsTrackId, track.remoteId)) return [model, Cmd.none];
+      if (msg.status < 200 || msg.status >= 300) return [{ ...model, lyricsText: new Uint8Array(0), lyricsLoading: false, lyricsResolved: false, lyricsErrorText: asciiBytes("Lyrics are unavailable right now. Try again.") }, Cmd.none];
+      const lyrics = parseOctaveLyrics(msg.body);
+      if (lyrics.length === 0) return [{ ...model, lyricsText: new Uint8Array(0), lyricsLoading: false, lyricsResolved: true, lyricsErrorText: asciiBytes("Lyrics are not available for this track.") }, Cmd.none];
+      return [{ ...model, lyricsText: lyrics, lyricsLoading: false, lyricsResolved: true, lyricsErrorText: new Uint8Array(0) }, Cmd.none];
+    }
+    case "lyrics_failed": {
+      const track = currentTrack(model);
+      if (track === undefined || model.lyricsTrackId.length === 0 || !bytesSame(model.lyricsTrackId, track.remoteId)) return [model, Cmd.none];
+      return [{ ...model, lyricsText: new Uint8Array(0), lyricsLoading: false, lyricsResolved: false, lyricsErrorText: asciiBytes("Lyrics are unavailable right now. Try again.") }, Cmd.none];
+    }
     case "resolve_track_done": {
       const track = currentTrack(model);
       if (track === undefined) return [{ ...model, playing: false, loadPending: false, audioReady: false }, Cmd.none];
@@ -457,6 +653,21 @@ export function update(model: Model, msg: Msg): [Model, Cmd<Msg>] {
       return [next, Cmd.audioStop("player")];
     }
     case "radio_failed": return [{ ...model, searchPhase: "failed", errorText: msg.reason, page: "search" }, Cmd.none];
+    case "play_artist": {
+      const id = 1;
+      const track = trackById(model, id);
+      if (track === undefined) return [model, Cmd.none];
+      const next = startTrack(model, id, track, model.tracks, false);
+      if (track.coverUrl.length === 0) {
+        if (model.coverImage === 1) return [next, Cmd.batch([Cmd.imageUnregister(1), Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+        if (model.coverRequestId === 1) return [next, Cmd.batch([Cmd.imageCancel(1), Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+        return [next, Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+      }
+      if (sameTrack(model.nowTrack, track) && (model.coverImage === 1 || model.coverRequestId === 1)) return [next, Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })];
+      if (model.coverImage === 1) return [next, Cmd.batch([Cmd.imageUnregister(1), Cmd.imageLoad(1, { url: track.coverUrl }, { event: "cover_done" }), Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+      if (model.coverRequestId === 1) return [next, Cmd.batch([Cmd.imageCancel(1), Cmd.imageLoad(1, { url: track.coverUrl }, { event: "cover_done" }), Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+      return [next, Cmd.batch([Cmd.imageLoad(1, { url: track.coverUrl }, { event: "cover_done" }), Cmd.fetch({ url: octaveResolveUrlWithQuality(track.remoteId, model.quality), method: "GET", headers: { accept: "application/json" }, timeoutMs: 8000 }, { key: "play-resolve", ok: "resolve_track_done", err: "resolve_track_failed" })])];
+    }
     case "play_track": {
       const raw = msg.playTrackId;
       if (!(raw >= 1 && raw <= 30)) return [model, Cmd.none];
@@ -853,28 +1064,33 @@ export function trackRows(model: Model): readonly TrackRow[] {
   return model.tracks.map((track, indexRaw) => {
     const index = indexRaw >= 0 && indexRaw <= 9007199254740990 ? Math.trunc(indexRaw) : 0;
     const id = index + 1;
-    return { id: id, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: sameTrack(track, model.nowTrack), liked: isLiked(model, id) };
+    return { id: id, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), artA: index % 6 === 0, artB: index % 6 === 1, artC: index % 6 === 2, artD: index % 6 === 3, artE: index % 6 === 4, artF: index % 6 === 5, active: sameTrack(track, model.nowTrack), liked: isLiked(model, id) };
   });
 }
 export function likedRows(model: Model): readonly TrackRow[] {
   return model.likedTracks.map((track, indexRaw) => {
     const index = indexRaw >= 0 && indexRaw <= 29 ? Math.trunc(indexRaw) : 0;
-    return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: sameTrack(track, model.nowTrack), liked: true };
+    return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), artA: index % 6 === 0, artB: index % 6 === 1, artC: index % 6 === 2, artD: index % 6 === 3, artE: index % 6 === 4, artF: index % 6 === 5, active: sameTrack(track, model.nowTrack), liked: true };
   });
 }
 export function queueRows(model: Model): readonly TrackRow[] {
   return model.queue.map((item, indexRaw) => {
     const index = indexRaw >= 0 && indexRaw <= 29 ? Math.trunc(indexRaw) : 0;
-    return { id: index + 1, title: item.track.title, artist: item.track.artist, album: item.track.album, duration: formatSeconds(item.track.durationSec), active: sameTrack(item.track, model.nowTrack), liked: trackIn(model.likedTracks, item.track) };
+    return { id: index + 1, title: item.track.title, artist: item.track.artist, album: item.track.album, duration: formatSeconds(item.track.durationSec), artA: index % 6 === 0, artB: index % 6 === 1, artC: index % 6 === 2, artD: index % 6 === 3, artE: index % 6 === 4, artF: index % 6 === 5, active: sameTrack(item.track, model.nowTrack), liked: trackIn(model.likedTracks, item.track) };
   });
 }
 export function playlistRows(model: Model): readonly TrackRow[] {
   return model.playlistTracks.map((track, indexRaw) => {
     const index = indexRaw >= 0 && indexRaw <= 29 ? Math.trunc(indexRaw) : 0;
-    return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), active: sameTrack(track, model.nowTrack), liked: trackIn(model.likedTracks, track) };
+    return { id: index + 1, title: track.title, artist: track.artist, album: track.album, duration: formatSeconds(track.durationSec), artA: index % 6 === 0, artB: index % 6 === 1, artC: index % 6 === 2, artD: index % 6 === 3, artE: index % 6 === 4, artF: index % 6 === 5, active: sameTrack(track, model.nowTrack), liked: trackIn(model.likedTracks, track) };
   });
 }
 export function hasPlaylist(model: Model): boolean { return model.playlistCreated; }
+
+export function hasSearchResults(model: Model): boolean { return model.tracks.length > 0; }
+export function topResultTitle(model: Model): Bytes { return model.tracks.length > 0 ? model.tracks[0].title : asciiBytes("No result"); }
+export function topResultArtist(model: Model): Bytes { return model.tracks.length > 0 ? model.tracks[0].artist : new Uint8Array(0); }
+export function topResultAlbum(model: Model): Bytes { return model.tracks.length > 0 ? model.tracks[0].album : new Uint8Array(0); }
 export function searchIdle(model: Model): boolean { return model.searchPhase === "idle" && model.search.bytes.length === 0; }
 export function quality128(model: Model): boolean { return model.quality === "q128"; }
 export function quality320(model: Model): boolean { return model.quality === "q320"; }
@@ -921,6 +1137,16 @@ export function pageHome(model: Model): boolean { return model.page === "home"; 
 export function pageSearch(model: Model): boolean { return model.page === "search"; }
 export function pageLibrary(model: Model): boolean { return model.page === "library"; }
 export function pageLyrics(model: Model): boolean { return model.page === "lyrics"; }
+export function pageArtist(model: Model): boolean { return model.page === "artist"; }
+export function artistName(model: Model): Bytes {
+  if (model.search.bytes.length > 0) return model.search.bytes;
+  const track = currentTrack(model);
+  if (track !== undefined && track.artist.length > 0) return track.artist;
+  return asciiBytes("Unknown artist");
+}
+export function hasLyrics(model: Model): boolean { return model.lyricsText.length > 0; }
+export function hasLyricsError(model: Model): boolean { return !model.lyricsLoading && model.lyricsErrorText.length > 0; }
+export function lyricsHint(model: Model): boolean { return !model.lyricsLoading && model.lyricsText.length === 0 && model.lyricsErrorText.length === 0; }
 export function pageQueue(model: Model): boolean { return model.page === "queue"; }
 export function pageSettings(model: Model): boolean { return model.page === "settings"; }
 export function pageNotifications(model: Model): boolean { return model.page === "notifications"; }

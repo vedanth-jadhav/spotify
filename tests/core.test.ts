@@ -189,3 +189,51 @@ test("queued playback preserves the original context for continuation", () => {
   [model] = update(model, { kind: "audio_event", state: "completed", positionMs: 0, durationMs: 204000, playing: false, buffering: false, bands: new Uint8Array(0) });
   assert.equal(new TextDecoder().decode(model.nowTrack.title), "Track 2");
 });
+
+
+test("artist play starts the first artist result instead of toggling unrelated playback", () => {
+  let model = modelWithFourTracks();
+  [model] = update(model, { kind: "play_track", playTrackId: 3 });
+  [model] = update(model, { kind: "play_artist" });
+  assert.equal(model.nowId, 1);
+  assert.equal(new TextDecoder().decode(model.nowTrack.title), "Track 1");
+  assert.equal(model.playing, true);
+});
+
+test("stale lyrics response is ignored after the current track changes", () => {
+  let model = modelWithFourTracks();
+  [model] = update(model, { kind: "play_track", playTrackId: 1 });
+  [model] = update(model, { kind: "go_lyrics" });
+  assert.equal(model.lyricsLoading, true);
+  assert.equal(new TextDecoder().decode(model.lyricsTrackId), "1001");
+  [model] = update(model, { kind: "next_track" });
+  assert.equal(new TextDecoder().decode(model.nowTrack.title), "Track 2");
+  assert.equal(model.lyricsTrackId.length, 0);
+  [model] = update(model, { kind: "lyrics_done", status: 200, body: b(JSON.stringify({ plainLyrics: "Wrong track lyrics" })) });
+  assert.equal(model.lyricsText.length, 0);
+  assert.equal(model.lyricsResolved, false);
+});
+
+test("transient lyrics failure remains retryable", () => {
+  let model = modelWithTrack();
+  [model] = update(model, { kind: "play_track", playTrackId: 1 });
+  [model] = update(model, { kind: "go_lyrics" });
+  [model] = update(model, { kind: "lyrics_failed", reason: b("network") });
+  assert.equal(model.lyricsLoading, false);
+  assert.equal(model.lyricsResolved, false);
+  assert.ok(model.lyricsErrorText.length > 0);
+  [model] = update(model, { kind: "go_lyrics" });
+  assert.equal(model.lyricsLoading, true);
+  assert.equal(model.lyricsErrorText.length, 0);
+});
+
+test("artist navigation clamps the editable search draft", () => {
+  const longArtist = "A".repeat(160);
+  let model = freshModel();
+  [model] = update(model, { kind: "octave_search_done", status: 200, body: b(JSON.stringify({ results: [{ id: "1", title: "Song", artist: { name: longArtist }, album: { title: "Album", cover_medium: "" }, duration: 180, previewUrl: "https://preview/1.mp3" }] })) });
+  [model] = update(model, { kind: "go_track_artist", artistTrackId: 1 });
+  assert.equal(model.page, "artist");
+  assert.equal(model.search.bytes.length, 96);
+  assert.equal(model.search.anchor, 96);
+  assert.equal(model.search.focus, 96);
+});

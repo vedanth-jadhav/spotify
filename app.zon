@@ -9,6 +9,25 @@
     .capabilities = .{ "native_views", "gpu_surfaces", "network", "filesystem" },
     .theme = "geist",
     .theme_accent = "#1ED760",
+    .assets = .{
+        .images = .{
+            .{ .id = 11, .path = "assets/art/liked.png" },
+            .{ .id = 12, .path = "assets/art/playlist.png" },
+            .{ .id = 13, .path = "assets/art/discover.png" },
+            .{ .id = 14, .path = "assets/art/mix1.png" },
+            .{ .id = 15, .path = "assets/art/mix2.png" },
+            .{ .id = 16, .path = "assets/art/chill.png" },
+            .{ .id = 17, .path = "assets/art/trending.png" },
+            .{ .id = 18, .path = "assets/art/release.png" },
+            .{ .id = 19, .path = "assets/art/party.png" },
+            .{ .id = 20, .path = "assets/art/focus.png" },
+            .{ .id = 21, .path = "assets/art/workout.png" },
+            .{ .id = 22, .path = "assets/art/classical.png" },
+            .{ .id = 23, .path = "assets/art/artist.png" },
+            .{ .id = 24, .path = "assets/art/pop.png" },
+            .{ .id = 25, .path = "assets/art/hiphop.png" },
+        },
+    },
     .shell = .{
         .windows = .{
             .{
